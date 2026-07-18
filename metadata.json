@@ -1,0 +1,6 @@
+{
+  "name": "tensi.ku",
+  "description": "Aplikasi pencatat tensi darah (sistolik, diastolik) dengan grafik tren kesehatan bulanan.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
