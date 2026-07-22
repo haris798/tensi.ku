@@ -67,7 +67,7 @@ export default function AuthScreen({ onSuccess, onOpenSettings }: AuthScreenProp
             <Activity className="h-7 w-7 animate-pulse" />
           </div>
           <h1 className="text-2xl font-extrabold text-slate-800 dark:text-slate-100 tracking-tight">tensi.ku</h1>
-          <p className="text-sm text-slate-500 dark:text-slate-400 mt-1 max-w-xs">Asisten monitoring tensi darah mandiri</p>
+          <p className="text-sm text-slate-500 dark:text-slate-400 mt-1 max-w-xs">Pantau Kesehatan Anda</p>
         </div>
 
         {/* Feedback Messages */}

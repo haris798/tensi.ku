@@ -132,6 +132,7 @@ export default function App() {
   const [logFilter, setLogFilter] = useState<'all' | 'bp' | 'weight'>('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [formTab, setFormTab] = useState<'bp' | 'weight'>('bp');
+  const [trendPeriod, setTrendPeriod] = useState<'monthly' | 'yearly'>('monthly');
   const [isLoading, setIsLoading] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
   const [isOffline, setIsOffline] = useState(!navigator.onLine);
@@ -1654,26 +1655,35 @@ export default function App() {
               </div>
             </div>
 
-            {/* Monthly Trend Pie Chart Card (Col 4) */}
+            {/* Trend Pie Chart Card (Col 4) */}
             <div className="lg:col-span-4 bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 p-6 shadow-sm flex flex-col justify-between hover:border-slate-300 transition-all duration-200">
               <div>
                 <div className="flex items-center justify-between mb-2">
                   <div>
-                    <h3 className="text-base font-extrabold text-slate-800 dark:text-slate-100 tracking-tight">Tren Kesehatan Bulanan</h3>
-                    <p className="text-xs text-slate-500 dark:text-slate-400 font-medium">Berdasarkan proporsi diagnosis tensi darah 30 hari terakhir</p>
+                    <h3 className="text-base font-extrabold text-slate-800 dark:text-slate-100 tracking-tight">Tren Kesehatan</h3>
+                    <p className="text-xs text-slate-500 dark:text-slate-400 font-medium">Berdasarkan proporsi diagnosis tensi darah {trendPeriod === 'monthly' ? '30 hari' : '1 tahun'} terakhir</p>
                   </div>
-                  <Activity className="h-5 w-5 text-indigo-500 shrink-0" />
+                  <div className="flex bg-slate-100 dark:bg-slate-800 rounded-lg p-0.5 ml-2 shrink-0">
+                    <button
+                      onClick={() => setTrendPeriod('monthly')}
+                      className={`text-[10px] font-bold px-2.5 py-1 rounded-md transition-all ${trendPeriod === 'monthly' ? 'bg-white dark:bg-slate-700 text-indigo-600 dark:text-indigo-400 shadow-sm' : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-300'}`}
+                    >
+                      Bulan
+                    </button>
+                    <button
+                      onClick={() => setTrendPeriod('yearly')}
+                      className={`text-[10px] font-bold px-2.5 py-1 rounded-md transition-all ${trendPeriod === 'yearly' ? 'bg-white dark:bg-slate-700 text-indigo-600 dark:text-indigo-400 shadow-sm' : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-300'}`}
+                    >
+                      Tahun
+                    </button>
+                  </div>
                 </div>
                 
                 <div className="mt-4 flex justify-center">
-                  <MonthlyTrendPieChart data={bpLogs} />
+                  <MonthlyTrendPieChart data={bpLogs} period={trendPeriod} />
                 </div>
               </div>
               
-              <div className="border-t border-slate-100 pt-3.5 mt-4 flex items-center gap-2 text-[10px] text-slate-400 leading-relaxed">
-                <Info className="h-3.5 w-3.5 text-indigo-500 shrink-0" />
-                <span>WHO mengklasifikasikan hipertensi ke dalam derajat 1 & 2 untuk memudahkan evaluasi bahaya kardiovaskular secara bertahap.</span>
-              </div>
             </div>
           </section>
         )}

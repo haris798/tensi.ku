@@ -3,6 +3,7 @@ import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts';
 
 interface MonthlyTrendPieChartProps {
   data: BloodPressureLog[];
+  period?: 'monthly' | 'yearly';
 }
 
 export function classifyBP(sys: number, dia: number): BPCategory {
@@ -37,12 +38,16 @@ export function classifyBP(sys: number, dia: number): BPCategory {
   }
 }
 
-export default function MonthlyTrendPieChart({ data }: MonthlyTrendPieChartProps) {
-  // Filter for past 30 days to focus on monthly trends
-  const past30Days = new Date();
-  past30Days.setDate(past30Days.getDate() - 30);
+export default function MonthlyTrendPieChart({ data, period = 'monthly' }: MonthlyTrendPieChartProps) {
+  // Filter for past 30 days or 1 year to focus on trends
+  const filterDate = new Date();
+  if (period === 'monthly') {
+    filterDate.setDate(filterDate.getDate() - 30);
+  } else {
+    filterDate.setFullYear(filterDate.getFullYear() - 1);
+  }
   
-  const monthlyLogs = data.filter(log => new Date(log.logged_at) >= past30Days);
+  const monthlyLogs = data.filter(log => new Date(log.logged_at) >= filterDate);
 
   const counts: Record<BPCategory, number> = {
     'Optimal': 0,
@@ -105,8 +110,8 @@ export default function MonthlyTrendPieChart({ data }: MonthlyTrendPieChartProps
     <div className="grid grid-cols-1 md:grid-cols-12 gap-6 items-center bg-white dark:bg-slate-900 p-2 rounded-xl">
       {monthlyLogs.length === 0 ? (
         <div className="col-span-12 flex h-[200px] items-center justify-center flex-col text-slate-400 py-6">
-          <p className="text-sm font-medium">Belum ada data tensi 30 hari terakhir</p>
-          <p className="text-xs text-slate-400 mt-1">Simpan data untuk melihat tren bulanan</p>
+          <p className="text-sm font-medium">Belum ada data tensi {period === 'monthly' ? '30 hari' : '1 tahun'} terakhir</p>
+          <p className="text-xs text-slate-400 mt-1">Simpan data untuk melihat tren {period === 'monthly' ? 'bulanan' : 'tahunan'}</p>
         </div>
       ) : (
         <>
@@ -140,7 +145,7 @@ export default function MonthlyTrendPieChart({ data }: MonthlyTrendPieChartProps
 
           {/* Chart Details List (Col 7) */}
           <div className="col-span-12 md:col-span-7 space-y-2">
-            <h4 className="text-xs font-bold text-slate-400 tracking-wider mb-2">Penyebaran Kategori (30 Hari Terakhir)</h4>
+            <h4 className="text-xs font-bold text-slate-400 tracking-wider mb-2">Penyebaran Kategori ({period === 'monthly' ? '30 Hari' : '1 Tahun'} Terakhir)</h4>
             <div className="space-y-2 max-h-[160px] overflow-y-auto pr-1">
               {Object.entries(categoryMetadata).map(([category, meta]) => {
                 const count = counts[category as BPCategory];
