@@ -1,11 +1,24 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { motion, AnimatePresence } from 'motion/react';
-import { supabase, getSavedCredentials, updateSupabaseClient, clearSavedCredentials, SUPABASE_SQL_SETUP } from './lib/supabase';
-import { localDb } from './lib/localDb';
-import { BloodPressureLog, WeightLog, UserProfile, BPCategory, AITipLog } from './types';
-import { syncEngine } from './lib/syncEngine';
-import { exportBPToCSV, exportWeightToCSV, parseCSV } from './lib/csvHelper';
-import { classifyBP } from './components/MonthlyTrendPieChart';
+import React, { useState, useEffect, useRef } from "react";
+import { motion, AnimatePresence } from "motion/react";
+import {
+  supabase,
+  getSavedCredentials,
+  updateSupabaseClient,
+  clearSavedCredentials,
+  SUPABASE_SQL_SETUP,
+} from "./lib/supabase";
+import { localDb } from "./lib/localDb";
+import {
+  BloodPressureLog,
+  WeightLog,
+  UserProfile,
+  BPCategory,
+  AITipLog,
+} from "./types";
+import { syncEngine } from "./lib/syncEngine";
+import { exportBPToCSV, exportWeightToCSV, parseCSV } from "./lib/csvHelper";
+import { classifyBP } from "./components/MonthlyTrendPieChart";
+import { StatistikPanel } from "./components/StatistikPanel";
 
 // Icons
 import {
@@ -36,54 +49,84 @@ import {
   Sun,
   Moon,
   Sparkles,
-} from 'lucide-react';
+} from "lucide-react";
 
 // Components
-import BloodPressureChart from './components/BloodPressureChart';
-import MonthlyTrendPieChart from './components/MonthlyTrendPieChart';
-import WeightChart from './components/WeightChart';
-import SupabaseConfigModal from './components/SupabaseConfigModal';
+import BloodPressureChart from "./components/BloodPressureChart";
+import MonthlyTrendPieChart from "./components/MonthlyTrendPieChart";
+import WeightChart from "./components/WeightChart";
+import SupabaseConfigModal from "./components/SupabaseConfigModal";
 
 // Helper function to generate high-quality personalized health tips locally
-const generateLocalTip = (bp: BloodPressureLog | undefined, weight: WeightLog | undefined): { tip: string; focus: string } => {
+const generateLocalTip = (
+  bp: BloodPressureLog | undefined,
+  weight: WeightLog | undefined
+): { tip: string; focus: string } => {
   if (bp) {
     const sys = Number(bp.systolic);
     const dia = Number(bp.diastolic);
     const category = classifyBP(sys, dia);
-    
-    if (category === 'Hipertensi 3') {
+
+    if (category === "Hipertensi 3") {
       return {
         tip: "Kurangi konsumsi natrium dengan sangat ketat dan istirahat total harian. Jika Anda mengalami pusing hebat, sesak napas, atau nyeri dada, segera hubungi layanan medis darurat.",
-        focus: "Peringatan Medis"
+        focus: "Peringatan Medis",
       };
-    } else if (category === 'Hipertensi 2') {
+    } else if (category === "Hipertensi 2") {
       return {
         tip: "Cobalah latihan pernapasan dalam (4-7-8) untuk menenangkan sistem saraf dan batasi asupan garam/kecap maksimal 1 sendok teh sehari.",
-        focus: "Kelola Stres & Diet"
+        focus: "Kelola Stres & Diet",
       };
-    } else if (category === 'Hipertensi 1') {
+    } else if (category === "Hipertensi 1") {
       const tips = [
-        { tip: "Mulailah berjalan kaki santai selama 30 menit setiap hari. Aktivitas aerobik ringan sangat membantu melatih otot jantung dan menurunkan tekanan darah harian secara stabil.", focus: "Aktivitas Fisik" },
-        { tip: "Tingkatkan konsumsi makanan tinggi kalium seperti pisang, alpukat, dan sayuran hijau untuk membantu tubuh membuang kelebihan natrium melalui urine.", focus: "Nutrisi" },
-        { tip: "Hindari minuman bersoda, kafein berlebih, dan usahakan tidur malam yang nyenyak minimal 7-8 jam guna menjaga kestabilan hormon tekanan darah.", focus: "Gaya Hidup" }
+        {
+          tip: "Mulailah berjalan kaki santai selama 30 menit setiap hari. Aktivitas aerobik ringan sangat membantu melatih otot jantung dan menurunkan tekanan darah harian secara stabil.",
+          focus: "Aktivitas Fisik",
+        },
+        {
+          tip: "Tingkatkan konsumsi makanan tinggi kalium seperti pisang, alpukat, dan sayuran hijau untuk membantu tubuh membuang kelebihan natrium melalui urine.",
+          focus: "Nutrisi",
+        },
+        {
+          tip: "Hindari minuman bersoda, kafein berlebih, dan usahakan tidur malam yang nyenyak minimal 7-8 jam guna menjaga kestabilan hormon tekanan darah.",
+          focus: "Gaya Hidup",
+        },
       ];
       return tips[Math.floor(Math.random() * tips.length)];
-    } else if (category === 'Hipertensi sistolik terisolasi') {
+    } else if (category === "Hipertensi sistolik terisolasi") {
       const tips = [
-        { tip: "Tekanan sistolik Anda cukup tinggi meskipun diastolik normal. Fokuslah mengurangi stres, membatasi garam, dan perbanyak buah serta sayur segar.", focus: "Gaya Hidup & Diet" },
-        { tip: "Sistolik terisolasi membutuhkan pemantauan berkala. Usahakan berjalan santai atau bersepeda statis 20-30 menit secara rutin guna menjaga kelenturan pembuluh darah.", focus: "Aktivitas Fisik" }
+        {
+          tip: "Tekanan sistolik Anda cukup tinggi meskipun diastolik normal. Fokuslah mengurangi stres, membatasi garam, dan perbanyak buah serta sayur segar.",
+          focus: "Gaya Hidup & Diet",
+        },
+        {
+          tip: "Sistolik terisolasi membutuhkan pemantauan berkala. Usahakan berjalan santai atau bersepeda statis 20-30 menit secara rutin guna menjaga kelenturan pembuluh darah.",
+          focus: "Aktivitas Fisik",
+        },
       ];
       return tips[Math.floor(Math.random() * tips.length)];
-    } else if (category === 'Normal tinggi') {
+    } else if (category === "Normal tinggi") {
       const tips = [
-        { tip: "Batasi konsumsi junk food dan makanan kaleng yang sarat akan garam tersembunyi. Memilih masakan rumahan segar adalah langkah terbaik menjaga tensi harian tetap stabil.", focus: "Nutrisi" },
-        { tip: "Minum air putih minimal 2 liter sehari untuk memastikan tubuh terhidrasi dengan baik, yang berdampak positif pada kekentalan darah dan tekanan sirkulasi tubuh.", focus: "Hidrasi" }
+        {
+          tip: "Batasi konsumsi junk food dan makanan kaleng yang sarat akan garam tersembunyi. Memilih masakan rumahan segar adalah langkah terbaik menjaga tensi harian tetap stabil.",
+          focus: "Nutrisi",
+        },
+        {
+          tip: "Minum air putih minimal 2 liter sehari untuk memastikan tubuh terhidrasi dengan baik, yang berdampak positif pada kekentalan darah dan tekanan sirkulasi tubuh.",
+          focus: "Hidrasi",
+        },
       ];
       return tips[Math.floor(Math.random() * tips.length)];
-    } else if (category === 'Normal' || category === 'Optimal') {
+    } else if (category === "Normal" || category === "Optimal") {
       const tips = [
-        { tip: "Tensi Anda sangat luar biasa! Pertahankan pola makan seimbang kaya serat dan rutinitas olahraga mingguan Anda demi menjaga elastisitas pembuluh darah jangka panjang.", focus: "Pemeliharaan" },
-        { tip: "Kunci tubuh sehat adalah konsistensi. Terus pantau tensi Anda secara berkala seminggu sekali di pagi hari setelah bangun tidur untuk melacak tren kesehatan mandiri.", focus: "Monitoring" }
+        {
+          tip: "Tensi Anda sangat luar biasa! Pertahankan pola makan seimbang kaya serat dan rutinitas olahraga mingguan Anda demi menjaga elastisitas pembuluh darah jangka panjang.",
+          focus: "Pemeliharaan",
+        },
+        {
+          tip: "Kunci tubuh sehat adalah konsistensi. Terus pantau tensi Anda secara berkala seminggu sekali di pagi hari setelah bangun tidur untuk melacak tren kesehatan mandiri.",
+          focus: "Monitoring",
+        },
       ];
       return tips[Math.floor(Math.random() * tips.length)];
     }
@@ -92,16 +135,25 @@ const generateLocalTip = (bp: BloodPressureLog | undefined, weight: WeightLog | 
   if (weight) {
     const w = Number(weight.weight);
     const tips = [
-      { tip: "Konsumsi buah segar atau segelas air sebelum makan besar dapat membantu Anda merasa lebih kenyang dan mengontrol porsi makan harian dengan lebih bijak.", focus: "Nutrisi" },
-      { tip: "Kombinasikan olahraga kardio ringan dengan latihan kekuatan otot sederhana seperti squat atau push-up di rumah guna mengoptimalkan metabolisme pembakaran lemak.", focus: "Aktivitas Fisik" },
-      { tip: "Pastikan Anda mendapatkan istirahat cukup, karena kurang tidur dapat meningkatkan hormon ghrelin yang memicu nafsu makan berlebih dan menaikkan berat badan.", focus: "Gaya Hidup" }
+      {
+        tip: "Konsumsi buah segar atau segelas air sebelum makan besar dapat membantu Anda merasa lebih kenyang dan mengontrol porsi makan harian dengan lebih bijak.",
+        focus: "Nutrisi",
+      },
+      {
+        tip: "Kombinasikan olahraga kardio ringan dengan latihan kekuatan otot sederhana seperti squat atau push-up di rumah guna mengoptimalkan metabolisme pembakaran lemak.",
+        focus: "Aktivitas Fisik",
+      },
+      {
+        tip: "Pastikan Anda mendapatkan istirahat cukup, karena kurang tidur dapat meningkatkan hormon ghrelin yang memicu nafsu makan berlebih dan menaikkan berat badan.",
+        focus: "Gaya Hidup",
+      },
     ];
     return tips[Math.floor(Math.random() * tips.length)];
   }
 
   return {
     tip: "Mulailah dengan mencatat tensi darah dan berat badan harian secara rutin untuk mendapatkan tips kesehatan yang dirancang khusus sesuai kondisi tubuh unik Anda.",
-    focus: "Tips Umum"
+    focus: "Tips Umum",
   };
 };
 
@@ -110,18 +162,28 @@ export default function App() {
   const [creds, setCreds] = useState(getSavedCredentials());
   const [isDemo, setIsDemo] = useState(false);
 
-  const [profile, setProfile] = useState<UserProfile>(() => localDb.getProfile());
-  const [bpLogs, setBpLogs] = useState<BloodPressureLog[]>(() => localDb.getBPLogs());
-  const [weightLogs, setWeightLogs] = useState<WeightLog[]>(() => localDb.getWeightLogs());
-  
+  const [profile, setProfile] = useState<UserProfile>(() =>
+    localDb.getProfile()
+  );
+  const [bpLogs, setBpLogs] = useState<BloodPressureLog[]>(() =>
+    localDb.getBPLogs()
+  );
+  const [weightLogs, setWeightLogs] = useState<WeightLog[]>(() =>
+    localDb.getWeightLogs()
+  );
+
   // UI Controls
   const [isConfigOpen, setIsConfigOpen] = useState(false);
-  const [activeMainTab, setActiveMainTab] = useState<'dashboard' | 'input' | 'riwayat' | 'seting'>('dashboard');
-  const [currentTab, setCurrentTab] = useState<'bp' | 'weight'>('bp');
-  const [logFilter, setLogFilter] = useState<'all' | 'bp' | 'weight'>('all');
-  const [searchQuery, setSearchQuery] = useState('');
-  const [formTab, setFormTab] = useState<'bp' | 'weight'>('bp');
-  const [trendPeriod, setTrendPeriod] = useState<'monthly' | 'yearly'>('monthly');
+  const [activeMainTab, setActiveMainTab] = useState<
+    "dashboard" | "statistik" | "input" | "riwayat" | "seting"
+  >("dashboard");
+  const [currentTab, setCurrentTab] = useState<"bp" | "weight">("bp");
+  const [logFilter, setLogFilter] = useState<"all" | "bp" | "weight">("all");
+  const [searchQuery, setSearchQuery] = useState("");
+  const [formTab, setFormTab] = useState<"bp" | "weight">("bp");
+  const [trendPeriod, setTrendPeriod] = useState<"monthly" | "yearly">(
+    "monthly"
+  );
   const [isLoading, setIsLoading] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
   const [isOffline, setIsOffline] = useState(!navigator.onLine);
@@ -149,10 +211,10 @@ export default function App() {
   };
 
   // Forms state
-  const [sysInput, setSysInput] = useState<string>('');
-  const [diaInput, setDiaInput] = useState<string>('');
-  const [pulseInput, setPulseInput] = useState<string>('');
-  const [bpNotes, setBpNotes] = useState<string>('');
+  const [sysInput, setSysInput] = useState<string>("");
+  const [diaInput, setDiaInput] = useState<string>("");
+  const [pulseInput, setPulseInput] = useState<string>("");
+  const [bpNotes, setBpNotes] = useState<string>("");
   const [bpDate, setBpDate] = useState<string>(() => {
     const now = new Date();
     // Format to yyyy-MM-ddThh:mm for datetime-local
@@ -160,42 +222,54 @@ export default function App() {
     return now.toISOString().slice(0, 16);
   });
 
-  const [weightInput, setWeightInput] = useState<string>('');
-  const [weightNotes, setWeightNotes] = useState<string>('');
+  const [weightInput, setWeightInput] = useState<string>("");
+  const [weightNotes, setWeightNotes] = useState<string>("");
   const [weightDate, setWeightDate] = useState<string>(() => {
     const now = new Date();
     now.setMinutes(now.getMinutes() - now.getTimezoneOffset());
     return now.toISOString().slice(0, 16);
   });
 
-  const [profileNameInput, setProfileNameInput] = useState('');
-  const [targetWeightInput, setTargetWeightInput] = useState('');
-  const [heightInput, setHeightInput] = useState('');
+  const [profileNameInput, setProfileNameInput] = useState("");
+  const [targetWeightInput, setTargetWeightInput] = useState("");
+  const [heightInput, setHeightInput] = useState("");
   const [isEditingProfile, setIsEditingProfile] = useState(false);
-  const [isDark, setIsDark] = useState(() => localStorage.getItem('bp_dark_mode') === 'true');
+  const [isDark, setIsDark] = useState(
+    () => localStorage.getItem("bp_dark_mode") === "true"
+  );
 
   // Health tips states
-  const [aiTipsHistory, setAiTipsHistory] = useState<AITipLog[]>(() => localDb.getAITips());
+  const [aiTipsHistory, setAiTipsHistory] = useState<AITipLog[]>(() =>
+    localDb.getAITips()
+  );
   const healthTip = aiTipsHistory.length > 0 ? aiTipsHistory[0] : null;
   const [isGeneratingTip, setIsGeneratingTip] = useState(false);
   const [tipError, setTipError] = useState<string | null>(null);
 
   const handleGenerateHealthTip = async (
-    force: boolean = false, 
-    currentBP?: BloodPressureLog, 
+    force: boolean = false,
+    currentBP?: BloodPressureLog,
     currentWeight?: WeightLog
   ) => {
-    const activeBP = currentBP !== undefined ? currentBP : bpLogs[bpLogs.length - 1];
-    const activeWeight = currentWeight !== undefined ? currentWeight : weightLogs[weightLogs.length - 1];
+    const activeBP =
+      currentBP !== undefined ? currentBP : bpLogs[bpLogs.length - 1];
+    const activeWeight =
+      currentWeight !== undefined
+        ? currentWeight
+        : weightLogs[weightLogs.length - 1];
 
     if (!activeBP && !activeWeight) {
-      setTipError('Masukkan setidaknya satu rekam medis tensi atau berat badan untuk menghasilkan tips kesehatan.');
+      setTipError(
+        "Masukkan setidaknya satu rekam medis tensi atau berat badan untuk menghasilkan tips kesehatan."
+      );
       return;
     }
 
     // Check if we already have a tip for today to avoid spamming
     const todayStr = new Date().toLocaleDateString();
-    const hasTipToday = aiTipsHistory.some(t => new Date(t.created_at).toLocaleDateString() === todayStr);
+    const hasTipToday = aiTipsHistory.some(
+      (t) => new Date(t.created_at).toLocaleDateString() === todayStr
+    );
 
     if (!force && hasTipToday) return;
 
@@ -204,23 +278,27 @@ export default function App() {
 
     try {
       if (!navigator.onLine) {
-        throw new Error('Tidak ada koneksi internet');
+        throw new Error("Tidak ada koneksi internet");
       }
 
-      const response = await fetch('/api/gemini/health-tips', {
-        method: 'POST',
+      const response = await fetch("/api/gemini/health-tips", {
+        method: "POST",
         headers: {
-          'Content-Type': 'application/json',
+          "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          latestBP: activeBP ? {
-            systolic: activeBP.systolic,
-            diastolic: activeBP.diastolic,
-            pulse: activeBP.pulse,
-          } : null,
-          latestWeight: activeWeight ? {
-            weight: activeWeight.weight,
-          } : null,
+          latestBP: activeBP
+            ? {
+                systolic: activeBP.systolic,
+                diastolic: activeBP.diastolic,
+                pulse: activeBP.pulse,
+              }
+            : null,
+          latestWeight: activeWeight
+            ? {
+                weight: activeWeight.weight,
+              }
+            : null,
         }),
       });
 
@@ -228,19 +306,25 @@ export default function App() {
         throw new Error(`Server returned status ${response.status}`);
       }
 
-      const contentType = response.headers.get('content-type');
-      if (!contentType || !contentType.includes('application/json')) {
-        throw new Error('Response is not JSON format');
+      const contentType = response.headers.get("content-type");
+      if (!contentType || !contentType.includes("application/json")) {
+        throw new Error("Response is not JSON format");
       }
 
       const data = await response.json();
       const newTip = localDb.saveAITip(data.tip, data.focus);
       setAiTipsHistory(localDb.getAITips());
     } catch (err: any) {
-      console.warn('Gagal memuat tips AI online, menggunakan versi lokal:', err);
+      console.warn(
+        "Gagal memuat tips AI online, menggunakan versi lokal:",
+        err
+      );
       // Fallback seamlessly to local smart rules generator
       const localTipData = generateLocalTip(activeBP, activeWeight);
-      const newTip = localDb.saveAITip(localTipData.tip, `${localTipData.focus} (Lokal)`);
+      const newTip = localDb.saveAITip(
+        localTipData.tip,
+        `${localTipData.focus} (Lokal)`
+      );
       setAiTipsHistory(localDb.getAITips());
     } finally {
       setIsGeneratingTip(false);
@@ -250,20 +334,30 @@ export default function App() {
   // Trigger health tips auto-generation if not generated yet and logs are available
   useEffect(() => {
     const todayStr = new Date().toLocaleDateString();
-    const hasTipToday = aiTipsHistory.some(t => new Date(t.created_at).toLocaleDateString() === todayStr);
+    const hasTipToday = aiTipsHistory.some(
+      (t) => new Date(t.created_at).toLocaleDateString() === todayStr
+    );
 
-    if (!hasTipToday && !isGeneratingTip && (bpLogs.length > 0 || weightLogs.length > 0)) {
-      handleGenerateHealthTip(false, bpLogs[bpLogs.length - 1], weightLogs[weightLogs.length - 1]);
+    if (
+      !hasTipToday &&
+      !isGeneratingTip &&
+      (bpLogs.length > 0 || weightLogs.length > 0)
+    ) {
+      handleGenerateHealthTip(
+        false,
+        bpLogs[bpLogs.length - 1],
+        weightLogs[weightLogs.length - 1]
+      );
     }
   }, [bpLogs, weightLogs, aiTipsHistory, isGeneratingTip]);
 
   // Sync dark mode class
   useEffect(() => {
-    localStorage.setItem('bp_dark_mode', isDark ? 'true' : 'false');
+    localStorage.setItem("bp_dark_mode", isDark ? "true" : "false");
     if (isDark) {
-      document.documentElement.classList.add('dark');
+      document.documentElement.classList.add("dark");
     } else {
-      document.documentElement.classList.remove('dark');
+      document.documentElement.classList.remove("dark");
     }
   }, [isDark]);
 
@@ -282,12 +376,12 @@ export default function App() {
       setIsOffline(true);
     };
 
-    window.addEventListener('online', handleOnline);
-    window.addEventListener('offline', handleOffline);
+    window.addEventListener("online", handleOnline);
+    window.addEventListener("offline", handleOffline);
 
     return () => {
-      window.removeEventListener('online', handleOnline);
-      window.removeEventListener('offline', handleOffline);
+      window.removeEventListener("online", handleOnline);
+      window.removeEventListener("offline", handleOffline);
     };
   }, [creds]);
 
@@ -299,32 +393,32 @@ export default function App() {
 
     setIsSyncing(true);
     try {
-      const currentFullName = profile?.full_name || 'Pengguna';
+      const currentFullName = profile?.full_name || "Pengguna";
       let userId = undefined;
 
       const { data: existingProfile, error: searchErr } = await supabase
-        .from('profiles')
-        .select('id')
-        .eq('full_name', currentFullName)
+        .from("profiles")
+        .select("id")
+        .eq("full_name", currentFullName)
         .maybeSingle();
 
       if (existingProfile) {
         userId = existingProfile.id;
       } else if (!searchErr) {
         const { data: newProfile, error: insertErr } = await supabase
-          .from('profiles')
-          .insert({ 
-            full_name: currentFullName, 
-            height: profile?.height || null, 
-            target_weight: profile?.target_weight || null 
+          .from("profiles")
+          .insert({
+            full_name: currentFullName,
+            height: profile?.height || null,
+            target_weight: profile?.target_weight || null,
           })
-          .select('id')
+          .select("id")
           .single();
-          
+
         if (newProfile) {
           userId = newProfile.id;
         } else {
-          console.warn('Could not create profile:', insertErr);
+          console.warn("Could not create profile:", insertErr);
         }
       }
 
@@ -344,13 +438,19 @@ export default function App() {
         }
         if (fresh.profile) {
           setProfile(fresh.profile);
-          setProfileNameInput(fresh.profile.full_name || 'Pengguna');
-          setTargetWeightInput(fresh.profile.target_weight ? String(fresh.profile.target_weight) : '');
-          setHeightInput(fresh.profile.height ? String(fresh.profile.height) : '');
+          setProfileNameInput(fresh.profile.full_name || "Pengguna");
+          setTargetWeightInput(
+            fresh.profile.target_weight
+              ? String(fresh.profile.target_weight)
+              : ""
+          );
+          setHeightInput(
+            fresh.profile.height ? String(fresh.profile.height) : ""
+          );
         }
       }
     } catch (err: any) {
-      console.warn('Background sync message:', err);
+      console.warn("Background sync message:", err);
     } finally {
       setIsSyncing(false);
     }
@@ -361,23 +461,34 @@ export default function App() {
     e.preventDefault();
     if (!profileNameInput.trim()) return;
 
-    const parsedTargetWeight = targetWeightInput.trim() ? parseFloat(targetWeightInput) : null;
+    const parsedTargetWeight = targetWeightInput.trim()
+      ? parseFloat(targetWeightInput)
+      : null;
     const parsedHeight = heightInput.trim() ? parseFloat(heightInput) : null;
 
     try {
-      const updated = localDb.saveProfile(profileNameInput.trim(), parsedTargetWeight, parsedHeight);
-      
+      const updated = localDb.saveProfile(
+        profileNameInput.trim(),
+        parsedTargetWeight,
+        parsedHeight
+      );
+
       // If connected to Supabase, update remotely using sync engine
       if (supabase && !isOffline) {
         const userId = syncEngine.getLastUserId();
         if (userId) {
-          syncEngine.localUpdateProfile(userId, profileNameInput.trim(), parsedTargetWeight, parsedHeight);
+          syncEngine.localUpdateProfile(
+            userId,
+            profileNameInput.trim(),
+            parsedTargetWeight,
+            parsedHeight
+          );
           // Optional: trigger background sync to flush the queue
           setTimeout(handleBackgroundSync, 500);
         }
       }
       setProfile(updated);
-      showSuccessAlert('Profil berhasil diperbarui!');
+      showSuccessAlert("Profil berhasil diperbarui!");
       setIsEditingProfile(false);
 
       if (navigator.onLine && supabase) {
@@ -385,7 +496,7 @@ export default function App() {
       }
     } catch (err: any) {
       console.error(err);
-      alert('Gagal memperbarui profil: ' + err.message);
+      alert("Gagal memperbarui profil: " + err.message);
     }
   };
 
@@ -397,19 +508,25 @@ export default function App() {
     const pulse = parseInt(pulseInput);
 
     if (isNaN(sys) || isNaN(dia) || isNaN(pulse)) {
-      alert('Masukkan angka tensi dan nadi yang valid.');
+      alert("Masukkan angka tensi dan nadi yang valid.");
       return;
     }
 
     try {
-      localDb.saveBPLog(sys, dia, pulse, new Date(bpDate).toISOString(), bpNotes);
+      localDb.saveBPLog(
+        sys,
+        dia,
+        pulse,
+        new Date(bpDate).toISOString(),
+        bpNotes
+      );
       setBpLogs(localDb.getBPLogs());
-      showSuccessAlert('Catatan tensi berhasil disimpan!');
+      showSuccessAlert("Catatan tensi berhasil disimpan!");
 
-      setSysInput('');
-      setDiaInput('');
-      setPulseInput('');
-      setBpNotes('');
+      setSysInput("");
+      setDiaInput("");
+      setPulseInput("");
+      setBpNotes("");
       const now = new Date();
       now.setMinutes(now.getMinutes() - now.getTimezoneOffset());
       setBpDate(now.toISOString().slice(0, 16));
@@ -419,7 +536,7 @@ export default function App() {
       }
     } catch (err: any) {
       console.error(err);
-      alert('Gagal menyimpan catatan: ' + err.message);
+      alert("Gagal menyimpan catatan: " + err.message);
     }
   };
 
@@ -429,17 +546,17 @@ export default function App() {
     const w = parseFloat(weightInput);
 
     if (isNaN(w) || w <= 0) {
-      alert('Masukkan berat badan yang valid.');
+      alert("Masukkan berat badan yang valid.");
       return;
     }
 
     try {
       localDb.saveWeightLog(w, new Date(weightDate).toISOString(), weightNotes);
       setWeightLogs(localDb.getWeightLogs());
-      showSuccessAlert('Catatan berat badan berhasil disimpan!');
+      showSuccessAlert("Catatan berat badan berhasil disimpan!");
 
-      setWeightInput('');
-      setWeightNotes('');
+      setWeightInput("");
+      setWeightNotes("");
       const now = new Date();
       now.setMinutes(now.getMinutes() - now.getTimezoneOffset());
       setWeightDate(now.toISOString().slice(0, 16));
@@ -449,7 +566,7 @@ export default function App() {
       }
     } catch (err: any) {
       console.error(err);
-      alert('Gagal menyimpan berat badan: ' + err.message);
+      alert("Gagal menyimpan berat badan: " + err.message);
     }
   };
 
@@ -458,14 +575,14 @@ export default function App() {
     try {
       localDb.deleteBPLog(id);
       setBpLogs(localDb.getBPLogs());
-      showSuccessAlert('Catatan tensi berhasil dihapus.');
+      showSuccessAlert("Catatan tensi berhasil dihapus.");
 
       if (navigator.onLine && supabase) {
         handleBackgroundSync();
       }
     } catch (err: any) {
       console.error(err);
-      alert('Gagal menghapus catatan: ' + err.message);
+      alert("Gagal menghapus catatan: " + err.message);
     }
   };
 
@@ -473,14 +590,14 @@ export default function App() {
     try {
       localDb.deleteWeightLog(id);
       setWeightLogs(localDb.getWeightLogs());
-      showSuccessAlert('Catatan berat badan berhasil dihapus.');
+      showSuccessAlert("Catatan berat badan berhasil dihapus.");
 
       if (navigator.onLine && supabase) {
         handleBackgroundSync();
       }
     } catch (err: any) {
       console.error(err);
-      alert('Gagal menghapus catatan: ' + err.message);
+      alert("Gagal menghapus catatan: " + err.message);
     }
   };
 
@@ -488,14 +605,16 @@ export default function App() {
   const handleSaveConfig = (url: string, key: string, useDemoMode: boolean) => {
     const activeClient = updateSupabaseClient(url, key);
     setCreds(getSavedCredentials());
-    
+
     setIsDemo(false);
-    localStorage.setItem('bp_is_demo', 'false');
+    localStorage.setItem("bp_is_demo", "false");
 
     if (!activeClient) {
-      alert('Kredensial tidak valid atau tidak lengkap. Silakan masukkan URL dan Key Supabase Anda dengan benar.');
+      alert(
+        "Kredensial tidak valid atau tidak lengkap. Silakan masukkan URL dan Key Supabase Anda dengan benar."
+      );
     } else {
-      showSuccessAlert('Konfigurasi sambungan berhasil diperbarui!');
+      showSuccessAlert("Konfigurasi sambungan berhasil diperbarui!");
     }
   };
 
@@ -503,11 +622,10 @@ export default function App() {
     clearSavedCredentials();
     setCreds(getSavedCredentials());
     setIsDemo(false);
-    localStorage.setItem('bp_is_demo', 'false');
-    showSuccessAlert('Konfigurasi sambungan berhasil di-reset.');
+    localStorage.setItem("bp_is_demo", "false");
+    showSuccessAlert("Konfigurasi sambungan berhasil di-reset.");
   };
 
-  
   const showSuccessAlert = (msg: string) => {
     setActionSuccess(msg);
     setTimeout(() => setActionSuccess(null), 3500);
@@ -541,31 +659,31 @@ export default function App() {
 
     const heightInM = heightInCm / 100;
     const bmi = weight / (heightInM * heightInM);
-    
-    let category = '';
-    let colorClass = '';
-    let suggestion = '';
+
+    let category = "";
+    let colorClass = "";
+    let suggestion = "";
 
     if (bmi < 18.5) {
-      category = 'Kurus (Underweight)';
-      colorClass = 'bg-sky-500/15 text-sky-300 border-sky-500/20';
-      suggestion = 'Disarankan menambah kalori & protein sehat.';
+      category = "Kurus (Underweight)";
+      colorClass = "bg-sky-500/15 text-sky-300 border-sky-500/20";
+      suggestion = "Disarankan menambah kalori & protein sehat.";
     } else if (bmi < 23.0) {
-      category = 'Normal (Ideal)';
-      colorClass = 'bg-emerald-500/15 text-emerald-300 border-emerald-500/20';
-      suggestion = 'Bagus! Pertahankan pola hidup sehat Anda.';
+      category = "Normal (Ideal)";
+      colorClass = "bg-emerald-500/15 text-emerald-300 border-emerald-500/20";
+      suggestion = "Bagus! Pertahankan pola hidup sehat Anda.";
     } else if (bmi < 25.0) {
-      category = 'Berisiko (Overweight)';
-      colorClass = 'bg-amber-500/15 text-amber-300 border-amber-500/20';
-      suggestion = 'Atur porsi makan & kurangi asupan manis.';
+      category = "Berisiko (Overweight)";
+      colorClass = "bg-amber-500/15 text-amber-300 border-amber-500/20";
+      suggestion = "Atur porsi makan & kurangi asupan manis.";
     } else if (bmi < 30.0) {
-      category = 'Obesitas Kelas 1';
-      colorClass = 'bg-orange-500/15 text-orange-300 border-orange-500/20';
-      suggestion = 'Perbanyak aktivitas fisik & kurangi lemak.';
+      category = "Obesitas Kelas 1";
+      colorClass = "bg-orange-500/15 text-orange-300 border-orange-500/20";
+      suggestion = "Perbanyak aktivitas fisik & kurangi lemak.";
     } else {
-      category = 'Obesitas Kelas 2';
-      colorClass = 'bg-rose-500/15 text-rose-300 border-rose-500/20';
-      suggestion = 'Disarankan konsultasi diet terarah.';
+      category = "Obesitas Kelas 2";
+      colorClass = "bg-rose-500/15 text-rose-300 border-rose-500/20";
+      suggestion = "Disarankan konsultasi diet terarah.";
     }
 
     return {
@@ -584,7 +702,8 @@ export default function App() {
     const current = latestWeight ? Number(latestWeight.weight) : 0;
     if (!current) return null;
 
-    const start = weightLogs.length > 0 ? Number(weightLogs[0].weight) : current;
+    const start =
+      weightLogs.length > 0 ? Number(weightLogs[0].weight) : current;
     const diff = current - target;
 
     let percent = 0;
@@ -607,8 +726,10 @@ export default function App() {
       target,
       current,
       diff: Math.abs(diff),
-      isCompleted: current === target || (start > target ? current <= target : current >= target),
-      isLoss: start > target
+      isCompleted:
+        current === target ||
+        (start > target ? current <= target : current >= target),
+      isLoss: start > target,
     };
   };
   const weightProgress = getWeightProgress();
@@ -620,40 +741,51 @@ export default function App() {
     sevenDaysAgo.setDate(now.getDate() - 7);
 
     // Filter logs in the last 7 days (inclusive of today)
-    const bpLogsLast7Days = bpLogs.filter(log => {
+    const bpLogsLast7Days = bpLogs.filter((log) => {
       const logDate = new Date(log.logged_at);
       return logDate >= sevenDaysAgo;
     });
 
-    const weightLogsLast7Days = weightLogs.filter(log => {
+    const weightLogsLast7Days = weightLogs.filter((log) => {
       const logDate = new Date(log.logged_at);
       return logDate >= sevenDaysAgo;
     });
 
-    const avgSystolic = bpLogsLast7Days.length > 0
-      ? bpLogsLast7Days.reduce((sum, log) => sum + Number(log.systolic), 0) / bpLogsLast7Days.length
-      : null;
+    const avgSystolic =
+      bpLogsLast7Days.length > 0
+        ? bpLogsLast7Days.reduce((sum, log) => sum + Number(log.systolic), 0) /
+          bpLogsLast7Days.length
+        : null;
 
-    const avgDiastolic = bpLogsLast7Days.length > 0
-      ? bpLogsLast7Days.reduce((sum, log) => sum + Number(log.diastolic), 0) / bpLogsLast7Days.length
-      : null;
+    const avgDiastolic =
+      bpLogsLast7Days.length > 0
+        ? bpLogsLast7Days.reduce((sum, log) => sum + Number(log.diastolic), 0) /
+          bpLogsLast7Days.length
+        : null;
 
-    const avgWeight = weightLogsLast7Days.length > 0
-      ? weightLogsLast7Days.reduce((sum, log) => sum + Number(log.weight), 0) / weightLogsLast7Days.length
-      : null;
+    const avgWeight =
+      weightLogsLast7Days.length > 0
+        ? weightLogsLast7Days.reduce(
+            (sum, log) => sum + Number(log.weight),
+            0
+          ) / weightLogsLast7Days.length
+        : null;
 
     return {
       avgSystolic,
       avgDiastolic,
       avgWeight,
       bpCount: bpLogsLast7Days.length,
-      weightCount: weightLogsLast7Days.length
+      weightCount: weightLogsLast7Days.length,
     };
   };
   const weeklySummary = getWeeklySummary();
 
   // BP Evaluation & Advice
-  const getBPCategoryDetails = (sys: number, dia: number): {
+  const getBPCategoryDetails = (
+    sys: number,
+    dia: number
+  ): {
     category: BPCategory;
     color: string;
     bg: string;
@@ -663,68 +795,75 @@ export default function App() {
   } => {
     const category = classifyBP(sys, dia);
     switch (category) {
-      case 'Optimal':
+      case "Optimal":
         return {
           category,
-          color: '#059669',
-          bg: 'bg-emerald-50 dark:bg-emerald-950/30',
-          border: 'border-emerald-200 dark:border-emerald-900/40',
-          text: 'text-emerald-800 dark:text-emerald-400',
-          advice: 'Tensi optimal yang sangat sehat. Pertahankan gaya hidup aktif dan pola makan bergizi seimbang!',
+          color: "#059669",
+          bg: "bg-emerald-50 dark:bg-emerald-950/30",
+          border: "border-emerald-200 dark:border-emerald-900/40",
+          text: "text-emerald-800 dark:text-emerald-400",
+          advice:
+            "Tensi optimal yang sangat sehat. Pertahankan gaya hidup aktif dan pola makan bergizi seimbang!",
         };
-      case 'Normal':
+      case "Normal":
         return {
           category,
-          color: '#10b981',
-          bg: 'bg-emerald-50 dark:bg-emerald-950/20',
-          border: 'border-emerald-100 dark:border-emerald-900/30',
-          text: 'text-emerald-700 dark:text-emerald-400',
-          advice: 'Tensi normal. Terus konsumsi makanan kaya serat, batasi garam tersembunyi, dan rutin berolahraga.',
+          color: "#10b981",
+          bg: "bg-emerald-50 dark:bg-emerald-950/20",
+          border: "border-emerald-100 dark:border-emerald-900/30",
+          text: "text-emerald-700 dark:text-emerald-400",
+          advice:
+            "Tensi normal. Terus konsumsi makanan kaya serat, batasi garam tersembunyi, dan rutin berolahraga.",
         };
-      case 'Normal tinggi':
+      case "Normal tinggi":
         return {
           category,
-          color: '#fbbf24',
-          bg: 'bg-amber-50 dark:bg-amber-950/30',
-          border: 'border-amber-200 dark:border-amber-900/40',
-          text: 'text-amber-800 dark:text-amber-400',
-          advice: 'Tensi normal tinggi. Mulai batasi asupan asin/junk food, perbanyak aktivitas fisik, dan pantau tensi harian.',
+          color: "#fbbf24",
+          bg: "bg-amber-50 dark:bg-amber-950/30",
+          border: "border-amber-200 dark:border-amber-900/40",
+          text: "text-amber-800 dark:text-amber-400",
+          advice:
+            "Tensi normal tinggi. Mulai batasi asupan asin/junk food, perbanyak aktivitas fisik, dan pantau tensi harian.",
         };
-      case 'Hipertensi 1':
+      case "Hipertensi 1":
         return {
           category,
-          color: '#f97316',
-          bg: 'bg-orange-50 dark:bg-orange-950/30',
-          border: 'border-orange-200 dark:border-orange-900/40',
-          text: 'text-orange-800 dark:text-orange-400',
-          advice: 'Hipertensi Derajat 1. Disarankan kurangi garam (maks 1 sendok teh/hari), tidur cukup, kelola stres, dan konsultasi ke medis.',
+          color: "#f97316",
+          bg: "bg-orange-50 dark:bg-orange-950/30",
+          border: "border-orange-200 dark:border-orange-900/40",
+          text: "text-orange-800 dark:text-orange-400",
+          advice:
+            "Hipertensi Derajat 1. Disarankan kurangi garam (maks 1 sendok teh/hari), tidur cukup, kelola stres, dan konsultasi ke medis.",
         };
-      case 'Hipertensi 2':
+      case "Hipertensi 2":
         return {
           category,
-          color: '#ef4444',
-          bg: 'bg-rose-50 dark:bg-rose-950/30',
-          border: 'border-rose-200 dark:border-rose-900/40',
-          text: 'text-rose-800 dark:text-rose-400',
-          advice: 'Hipertensi Derajat 2. Hindari asupan asin, batasi kafein, lakukan olahraga teratur, dan segera diskusikan pengobatan dengan dokter.',
+          color: "#ef4444",
+          bg: "bg-rose-50 dark:bg-rose-950/30",
+          border: "border-rose-200 dark:border-rose-900/40",
+          text: "text-rose-800 dark:text-rose-400",
+          advice:
+            "Hipertensi Derajat 2. Hindari asupan asin, batasi kafein, lakukan olahraga teratur, dan segera diskusikan pengobatan dengan dokter.",
         };
-      case 'Hipertensi 3':
+      case "Hipertensi 3":
         return {
           category,
-          color: '#991b1b',
-          bg: 'bg-red-100 dark:bg-red-950/40',
-          border: 'border-red-300 dark:border-red-900/40',
-          text: 'text-red-900 dark:text-red-300',
-          advice: '⚠️ HIPERTENSI BERAT! Jika Anda mengalami pusing berat, nyeri dada, sesak napas, atau pandangan kabur, segera ke fasilitas kesehatan terdekat.',
+          color: "#991b1b",
+          bg: "bg-red-100 dark:bg-red-950/40",
+          border: "border-red-300 dark:border-red-900/40",
+          text: "text-red-900 dark:text-red-300",
+          advice:
+            "⚠️ HIPERTENSI BERAT! Jika Anda mengalami pusing berat, nyeri dada, sesak napas, atau pandangan kabur, segera ke fasilitas kesehatan terdekat.",
         };
-      case 'Hipertensi sistolik terisolasi':
+      case "Hipertensi sistolik terisolasi":
         return {
           category,
-          color: '#8b5cf6',
-          bg: 'bg-indigo-50 dark:bg-indigo-950/30',
-          border: 'border-indigo-200 dark:border-indigo-900/40',
-          text: 'text-indigo-800 dark:text-indigo-400',
-          advice: 'Hipertensi Sistolik Terisolasi (Sistolik tinggi, Diastolik normal). Fokus kelola stres, jaga kelenturan pembuluh darah dengan olahraga aerobik ringan.',
+          color: "#8b5cf6",
+          bg: "bg-indigo-50 dark:bg-indigo-950/30",
+          border: "border-indigo-200 dark:border-indigo-900/40",
+          text: "text-indigo-800 dark:text-indigo-400",
+          advice:
+            "Hipertensi Sistolik Terisolasi (Sistolik tinggi, Diastolik normal). Fokus kelola stres, jaga kelenturan pembuluh darah dengan olahraga aerobik ringan.",
         };
     }
   };
@@ -732,27 +871,45 @@ export default function App() {
   // Pulse Evaluation
   const getPulseDetails = (bpm: number) => {
     if (bpm < 60) {
-      return { label: 'Lambat (Bradikardia)', color: 'text-sky-600 dark:text-sky-400 bg-sky-50 dark:bg-sky-950/30' };
+      return {
+        label: "Lambat (Bradikardia)",
+        color: "text-sky-600 dark:text-sky-400 bg-sky-50 dark:bg-sky-950/30",
+      };
     } else if (bpm > 100) {
-      return { label: 'Cepat (Takikardia)', color: 'text-rose-600 dark:text-rose-400 bg-rose-50 dark:bg-rose-950/30' };
+      return {
+        label: "Cepat (Takikardia)",
+        color:
+          "text-rose-600 dark:text-rose-400 bg-rose-50 dark:bg-rose-950/30",
+      };
     }
-    return { label: 'Normal (Rileks)', color: 'text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/30' };
+    return {
+      label: "Normal (Rileks)",
+      color:
+        "text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/30",
+    };
   };
 
   // Data Export / Import for local mode
   const exportLocalData = () => {
-    const dataStr = JSON.stringify({
-      bp: localDb.getBPLogs(),
-      weight: localDb.getWeightLogs(),
-      profile: localDb.getProfile(),
-    }, null, 2);
-    const dataUri = 'data:application/json;charset=utf-8,'+ encodeURIComponent(dataStr);
-    
-    const exportFileDefaultName = `riwayat_kesehatan_${new Date().toISOString().slice(0, 10)}.json`;
-    
-    const linkElement = document.createElement('a');
-    linkElement.setAttribute('href', dataUri);
-    linkElement.setAttribute('download', exportFileDefaultName);
+    const dataStr = JSON.stringify(
+      {
+        bp: localDb.getBPLogs(),
+        weight: localDb.getWeightLogs(),
+        profile: localDb.getProfile(),
+      },
+      null,
+      2
+    );
+    const dataUri =
+      "data:application/json;charset=utf-8," + encodeURIComponent(dataStr);
+
+    const exportFileDefaultName = `riwayat_kesehatan_${new Date()
+      .toISOString()
+      .slice(0, 10)}.json`;
+
+    const linkElement = document.createElement("a");
+    linkElement.setAttribute("href", dataUri);
+    linkElement.setAttribute("download", exportFileDefaultName);
     linkElement.click();
   };
 
@@ -761,7 +918,7 @@ export default function App() {
     reader.onload = async (e) => {
       const text = e.target?.result as string;
       if (!text) {
-        alert('File kosong atau gagal membaca file.');
+        alert("File kosong atau gagal membaca file.");
         return;
       }
 
@@ -775,29 +932,43 @@ export default function App() {
       const totalWeight = result.weight.length;
 
       if (totalBp === 0 && totalWeight === 0) {
-        alert('Tidak ada data rekam medis yang valid ditemukan dalam file CSV.');
+        alert(
+          "Tidak ada data rekam medis yang valid ditemukan dalam file CSV."
+        );
         return;
       }
 
-      if (confirm(`Apakah Anda yakin ingin mengimpor ${totalBp} catatan tensi dan ${totalWeight} catatan berat badan dari CSV?`)) {
+      if (
+        confirm(
+          `Apakah Anda yakin ingin mengimpor ${totalBp} catatan tensi dan ${totalWeight} catatan berat badan dari CSV?`
+        )
+      ) {
         try {
-          result.bp.forEach(item => {
-            localDb.saveBPLog(item.systolic, item.diastolic, item.pulse, item.logged_at, item.notes);
+          result.bp.forEach((item) => {
+            localDb.saveBPLog(
+              item.systolic,
+              item.diastolic,
+              item.pulse,
+              item.logged_at,
+              item.notes
+            );
           });
-          result.weight.forEach(item => {
+          result.weight.forEach((item) => {
             localDb.saveWeightLog(item.weight, item.logged_at, item.notes);
           });
-             
+
           setBpLogs(localDb.getBPLogs());
           setWeightLogs(localDb.getWeightLogs());
-          showSuccessAlert(`Berhasil mengimpor ${totalBp} rekam tensi & ${totalWeight} rekam berat badan!`);
+          showSuccessAlert(
+            `Berhasil mengimpor ${totalBp} rekam tensi & ${totalWeight} rekam berat badan!`
+          );
 
           if (navigator.onLine && supabase) {
             handleBackgroundSync();
           }
         } catch (err: any) {
-          console.error('Gagal mengimpor CSV:', err);
-          alert('Gagal mengimpor data CSV: ' + err.message);
+          console.error("Gagal mengimpor CSV:", err);
+          alert("Gagal mengimpor data CSV: " + err.message);
         }
       }
     };
@@ -807,7 +978,7 @@ export default function App() {
   // Filter logs for the history list
   const filteredLogsList = () => {
     let combined: Array<{
-      type: 'bp' | 'weight';
+      type: "bp" | "weight";
       id: string;
       date: Date;
       valText: string;
@@ -815,28 +986,28 @@ export default function App() {
       raw: any;
     }> = [];
 
-    if (logFilter === 'all' || logFilter === 'bp') {
-      bpLogs.forEach(log => {
+    if (logFilter === "all" || logFilter === "bp") {
+      bpLogs.forEach((log) => {
         combined.push({
-          type: 'bp',
+          type: "bp",
           id: log.id,
           date: new Date(log.logged_at),
           valText: `${log.systolic}/${log.diastolic} mmHg (Nadi: ${log.pulse} bpm)`,
           notes: log.notes,
-          raw: log
+          raw: log,
         });
       });
     }
 
-    if (logFilter === 'all' || logFilter === 'weight') {
-      weightLogs.forEach(log => {
+    if (logFilter === "all" || logFilter === "weight") {
+      weightLogs.forEach((log) => {
         combined.push({
-          type: 'weight',
+          type: "weight",
           id: log.id,
           date: new Date(log.logged_at),
           valText: `${Number(log.weight).toFixed(1)} kg`,
           notes: log.notes,
-          raw: log
+          raw: log,
         });
       });
     }
@@ -847,10 +1018,11 @@ export default function App() {
     // Apply search query
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase();
-      combined = combined.filter(item => 
-        item.notes.toLowerCase().includes(q) || 
-        item.valText.toLowerCase().includes(q) || 
-        item.date.toLocaleDateString().includes(q)
+      combined = combined.filter(
+        (item) =>
+          item.notes.toLowerCase().includes(q) ||
+          item.valText.toLowerCase().includes(q) ||
+          item.date.toLocaleDateString().includes(q)
       );
     }
 
@@ -860,12 +1032,16 @@ export default function App() {
   const logsToShow = filteredLogsList();
 
   return (
-    <div id="main-app-container" className="min-h-screen bg-[#F8FAFC] dark:bg-slate-950 text-slate-900 dark:text-slate-100 flex flex-col font-sans selection:bg-indigo-100 dark:selection:bg-indigo-950 selection:text-indigo-900 dark:selection:text-indigo-200 pb-16 transition-colors duration-200 animate-fade-in">
-      
+    <div
+      id="main-app-container"
+      className="min-h-screen bg-[#F8FAFC] dark:bg-slate-950 text-slate-900 dark:text-slate-100 flex flex-col font-sans selection:bg-indigo-100 dark:selection:bg-indigo-950 selection:text-indigo-900 dark:selection:text-indigo-200 pb-16 transition-colors duration-200 animate-fade-in"
+    >
       {/* HEADER BAR */}
-      <header id="header-bar" className="sticky top-0 z-40 w-full border-b border-slate-200 dark:border-slate-700/80 dark:border-slate-800 bg-[#F8FAFC]/90 dark:bg-slate-950/90 backdrop-blur-md px-4 sm:px-6 py-4">
+      <header
+        id="header-bar"
+        className="sticky top-0 z-40 w-full border-b border-slate-200 dark:border-slate-700/80 dark:border-slate-800 bg-[#F8FAFC]/90 dark:bg-slate-950/90 backdrop-blur-md px-4 sm:px-6 py-4"
+      >
         <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4">
-          
           {/* Logo Title */}
           <div className="flex items-center gap-3">
             <div className="h-10 w-10 rounded-xl bg-indigo-600 flex items-center justify-center text-white shadow-lg shadow-indigo-100 dark:shadow-none shrink-0">
@@ -875,13 +1051,14 @@ export default function App() {
               <h1 className="text-xl font-bold text-slate-800 dark:text-slate-100 tracking-tight flex items-center gap-2">
                 tensi.ku
               </h1>
-              <p className="text-xs text-slate-500 dark:text-slate-400 font-medium">Asisten monitoring</p>
+              <p className="text-xs text-slate-500 dark:text-slate-400 font-medium">
+                Asisten monitoring
+              </p>
             </div>
           </div>
 
           {/* User Profile & Database Status */}
           <div className="flex flex-wrap items-center justify-center sm:justify-end gap-3 w-full sm:w-auto">
-            
             {/* Sync Mode Status Badge */}
             {isOffline ? (
               <div className="bg-red-50 dark:bg-red-950/30 text-red-700 dark:text-red-400 border-red-200 dark:border-red-900/40 text-[11px] font-bold px-3 py-1.5 rounded-full flex items-center gap-1.5 border shadow-xs">
@@ -899,12 +1076,12 @@ export default function App() {
             <div className="flex items-center gap-1 p-1 rounded-xl border border-slate-200 dark:border-slate-800 bg-white/50 dark:bg-slate-900/50 backdrop-blur-sm mr-2">
               <button
                 type="button"
-                onClick={() => setActiveMainTab('dashboard')}
+                onClick={() => setActiveMainTab("dashboard")}
                 title="Dashboard: Tensi, Nadi, Berat"
                 className={`p-2 rounded-lg transition-all cursor-pointer ${
-                  activeMainTab === 'dashboard'
-                    ? 'bg-indigo-600 text-white shadow-md shadow-indigo-100 dark:shadow-none'
-                    : 'text-slate-500 dark:text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-slate-100 dark:bg-slate-800 dark:hover:bg-slate-800'
+                  activeMainTab === "dashboard"
+                    ? "bg-indigo-600 text-white shadow-md shadow-indigo-100 dark:shadow-none"
+                    : "text-slate-500 dark:text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-slate-100 dark:bg-slate-800 dark:hover:bg-slate-800"
                 }`}
               >
                 <LayoutDashboard className="h-4 w-4" />
@@ -912,12 +1089,25 @@ export default function App() {
 
               <button
                 type="button"
-                onClick={() => setActiveMainTab('input')}
+                onClick={() => setActiveMainTab("statistik")}
+                title="Statistik"
+                className={`p-2 rounded-lg transition-all cursor-pointer ${
+                  activeMainTab === "statistik"
+                    ? "bg-indigo-600 text-white shadow-md shadow-indigo-100 dark:shadow-none"
+                    : "text-slate-500 dark:text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-slate-100 dark:bg-slate-800 dark:hover:bg-slate-800"
+                }`}
+              >
+                <TrendingUp className="h-4 w-4" />
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setActiveMainTab("input")}
                 title="Input Data Baru"
                 className={`p-2 rounded-lg transition-all cursor-pointer ${
-                  activeMainTab === 'input'
-                    ? 'bg-indigo-600 text-white shadow-md shadow-indigo-100 dark:shadow-none'
-                    : 'text-slate-500 dark:text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-slate-100 dark:bg-slate-800 dark:hover:bg-slate-800'
+                  activeMainTab === "input"
+                    ? "bg-indigo-600 text-white shadow-md shadow-indigo-100 dark:shadow-none"
+                    : "text-slate-500 dark:text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-slate-100 dark:bg-slate-800 dark:hover:bg-slate-800"
                 }`}
               >
                 <Plus className="h-4 w-4" />
@@ -925,12 +1115,12 @@ export default function App() {
 
               <button
                 type="button"
-                onClick={() => setActiveMainTab('riwayat')}
+                onClick={() => setActiveMainTab("riwayat")}
                 title="Riwayat Pengukuran"
                 className={`p-2 rounded-lg transition-all cursor-pointer ${
-                  activeMainTab === 'riwayat'
-                    ? 'bg-indigo-600 text-white shadow-md shadow-indigo-100 dark:shadow-none'
-                    : 'text-slate-500 dark:text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-slate-100 dark:bg-slate-800 dark:hover:bg-slate-800'
+                  activeMainTab === "riwayat"
+                    ? "bg-indigo-600 text-white shadow-md shadow-indigo-100 dark:shadow-none"
+                    : "text-slate-500 dark:text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-slate-100 dark:bg-slate-800 dark:hover:bg-slate-800"
                 }`}
               >
                 <History className="h-4 w-4" />
@@ -938,12 +1128,12 @@ export default function App() {
 
               <button
                 type="button"
-                onClick={() => setActiveMainTab('seting')}
+                onClick={() => setActiveMainTab("seting")}
                 title="Pengaturan & Profil"
                 className={`p-2 rounded-lg transition-all cursor-pointer ${
-                  activeMainTab === 'seting'
-                    ? 'bg-indigo-600 text-white shadow-md shadow-indigo-100 dark:shadow-none'
-                    : 'text-slate-500 dark:text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-slate-100 dark:bg-slate-800 dark:hover:bg-slate-800'
+                  activeMainTab === "seting"
+                    ? "bg-indigo-600 text-white shadow-md shadow-indigo-100 dark:shadow-none"
+                    : "text-slate-500 dark:text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-slate-100 dark:bg-slate-800 dark:hover:bg-slate-800"
                 }`}
               >
                 <Settings className="h-4 w-4" />
@@ -954,14 +1144,22 @@ export default function App() {
             <div className="flex items-center gap-1.5">
               <button
                 onClick={() => setIsConfigOpen(true)}
-                title={!isOffline && !isSyncing ? "Tersinkronisasi (Atur Supabase)" : "Atur Sambungan Supabase"}
+                title={
+                  !isOffline && !isSyncing
+                    ? "Tersinkronisasi (Atur Supabase)"
+                    : "Atur Sambungan Supabase"
+                }
                 className={`p-2 rounded-xl border transition-all active:scale-95 shadow-xs flex items-center justify-center ${
                   !isOffline && !isSyncing
-                    ? 'border-emerald-200 dark:border-emerald-900/40 bg-emerald-50 dark:bg-emerald-950/30 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-100 dark:hover:bg-emerald-950/50'
-                    : 'border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-900/50 dark:hover:bg-slate-800 hover:text-indigo-600 dark:hover:text-indigo-400'
+                    ? "border-emerald-200 dark:border-emerald-900/40 bg-emerald-50 dark:bg-emerald-950/30 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-100 dark:hover:bg-emerald-950/50"
+                    : "border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-900/50 dark:hover:bg-slate-800 hover:text-indigo-600 dark:hover:text-indigo-400"
                 }`}
               >
-                <Database className={`h-4 w-4 ${!isOffline && !isSyncing ? 'animate-pulse' : ''}`} />
+                <Database
+                  className={`h-4 w-4 ${
+                    !isOffline && !isSyncing ? "animate-pulse" : ""
+                  }`}
+                />
               </button>
 
               <button
@@ -969,12 +1167,14 @@ export default function App() {
                 title={isDark ? "Ganti ke Mode Terang" : "Ganti ke Mode Gelap"}
                 className="p-2 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-slate-900/50 dark:hover:bg-slate-800 text-slate-500 dark:text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 transition-all active:scale-95 shadow-xs flex items-center justify-center"
               >
-                {isDark ? <Sun className="h-4 w-4 text-amber-500" /> : <Moon className="h-4 w-4" />}
+                {isDark ? (
+                  <Sun className="h-4 w-4 text-amber-500" />
+                ) : (
+                  <Moon className="h-4 w-4" />
+                )}
               </button>
-
             </div>
           </div>
-
         </div>
       </header>
 
@@ -1000,16 +1200,19 @@ export default function App() {
 
       {/* MAIN LAYOUT WRAPPER */}
       <main className="flex-1 w-full max-w-7xl mx-auto px-4 sm:px-6 py-6 space-y-6">
-        
         {/* ROW 1: REAL-TIME HEALTH SCORE CARDS */}
-        {activeMainTab === 'dashboard' && (
-          <section id="health-cards-grid" className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 animate-fade-in">
-            
+        {activeMainTab === "dashboard" && (
+          <section
+            id="health-cards-grid"
+            className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 animate-fade-in"
+          >
             {/* BP Latest Card */}
             <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 p-6 shadow-sm flex flex-col justify-between hover:border-slate-300 dark:hover:border-slate-700 transition-all duration-200">
               <div>
                 <div className="flex items-center justify-between mb-4">
-                  <span className="text-xs font-bold text-slate-400 dark:text-slate-500 dark:text-slate-400 tracking-wider">Tensi Darah Terakhir</span>
+                  <span className="text-xs font-bold text-slate-400 dark:text-slate-500 dark:text-slate-400 tracking-wider">
+                    Tensi Darah Terakhir
+                  </span>
                   <Heart className="h-5.5 w-5.5 text-rose-500 fill-rose-50 dark:fill-rose-950/20" />
                 </div>
                 {latestBP ? (
@@ -1018,15 +1221,22 @@ export default function App() {
                       <span className="text-3xl font-extrabold text-slate-800 dark:text-slate-100 font-mono tracking-tight">
                         {latestBP.systolic} / {latestBP.diastolic}
                       </span>
-                      <span className="text-xs font-semibold text-slate-400 dark:text-slate-500 dark:text-slate-400">mmHg</span>
+                      <span className="text-xs font-semibold text-slate-400 dark:text-slate-500 dark:text-slate-400">
+                        mmHg
+                      </span>
                     </div>
-                    
+
                     {/* Dynamic diagnosis badge */}
                     {(() => {
-                      const evalBP = getBPCategoryDetails(latestBP.systolic, latestBP.diastolic);
+                      const evalBP = getBPCategoryDetails(
+                        latestBP.systolic,
+                        latestBP.diastolic
+                      );
                       return (
                         <div className="mt-3">
-                          <span className={`inline-block text-[10px] font-bold px-2.5 py-1 rounded-md border ${evalBP.bg} ${evalBP.border} ${evalBP.text}`}>
+                          <span
+                            className={`inline-block text-[10px] font-bold px-2.5 py-1 rounded-md border ${evalBP.bg} ${evalBP.border} ${evalBP.text}`}
+                          >
                             {evalBP.category}
                           </span>
                           <p className="text-xs text-slate-600 dark:text-slate-300 dark:text-slate-350 mt-2.5 leading-relaxed italic">
@@ -1038,14 +1248,23 @@ export default function App() {
                   </div>
                 ) : (
                   <div className="py-6 text-center">
-                    <p className="text-xs text-slate-400 dark:text-slate-500 dark:text-slate-400 italic">Belum ada riwayat tensi</p>
+                    <p className="text-xs text-slate-400 dark:text-slate-500 dark:text-slate-400 italic">
+                      Belum ada riwayat tensi
+                    </p>
                   </div>
                 )}
               </div>
               {latestBP && (
                 <div className="border-t border-slate-100 dark:border-slate-800/80 pt-3 mt-4 flex items-center justify-between text-[10px] text-slate-400 dark:text-slate-500 dark:text-slate-400 font-semibold font-mono">
                   <span>Terakhir Dicatat</span>
-                  <span>{new Date(latestBP.logged_at).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}</span>
+                  <span>
+                    {new Date(latestBP.logged_at).toLocaleDateString("id-ID", {
+                      day: "numeric",
+                      month: "short",
+                      hour: "2-digit",
+                      minute: "2-digit",
+                    })}
+                  </span>
                 </div>
               )}
             </div>
@@ -1054,7 +1273,9 @@ export default function App() {
             <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 p-6 shadow-sm flex flex-col justify-between hover:border-slate-300 dark:hover:border-slate-700 transition-all duration-200">
               <div>
                 <div className="flex items-center justify-between mb-4">
-                  <span className="text-xs font-bold text-slate-400 dark:text-slate-500 dark:text-slate-400 tracking-wider">Detak Nadi Terakhir</span>
+                  <span className="text-xs font-bold text-slate-400 dark:text-slate-500 dark:text-slate-400 tracking-wider">
+                    Detak Nadi Terakhir
+                  </span>
                   <Activity className="h-5.5 w-5.5 text-indigo-500" />
                 </div>
                 {latestBP ? (
@@ -1063,19 +1284,25 @@ export default function App() {
                       <span className="text-3xl font-extrabold text-slate-800 dark:text-slate-100 font-mono tracking-tight">
                         {latestBP.pulse}
                       </span>
-                      <span className="text-xs font-semibold text-slate-400 dark:text-slate-500 dark:text-slate-400">bpm (Detak/Menit)</span>
+                      <span className="text-xs font-semibold text-slate-400 dark:text-slate-500 dark:text-slate-400">
+                        bpm (Detak/Menit)
+                      </span>
                     </div>
-                    
+
                     {/* Dynamic pulse details */}
                     {(() => {
                       const pEval = getPulseDetails(latestBP.pulse);
                       return (
                         <div className="mt-3">
-                          <span className={`inline-block text-[10px] font-bold px-2.5 py-1 rounded-md ${pEval.color}`}>
+                          <span
+                            className={`inline-block text-[10px] font-bold px-2.5 py-1 rounded-md ${pEval.color}`}
+                          >
                             Kondisi: {pEval.label}
                           </span>
                           <p className="text-xs text-slate-600 dark:text-slate-300 dark:text-slate-350 mt-2.5 leading-relaxed">
-                            Detak jantung istirahat (RHR) yang normal berkisar antara 60 hingga 100 detak per menit bagi orang dewasa sehat.
+                            Detak jantung istirahat (RHR) yang normal berkisar
+                            antara 60 hingga 100 detak per menit bagi orang
+                            dewasa sehat.
                           </p>
                         </div>
                       );
@@ -1083,14 +1310,23 @@ export default function App() {
                   </div>
                 ) : (
                   <div className="py-6 text-center">
-                    <p className="text-xs text-slate-400 dark:text-slate-500 dark:text-slate-400 italic">Belum ada data detak nadi</p>
+                    <p className="text-xs text-slate-400 dark:text-slate-500 dark:text-slate-400 italic">
+                      Belum ada data detak nadi
+                    </p>
                   </div>
                 )}
               </div>
               {latestBP && (
                 <div className="border-t border-slate-100 dark:border-slate-800/80 pt-3 mt-4 flex items-center justify-between text-[10px] text-slate-400 dark:text-slate-500 dark:text-slate-400 font-semibold font-mono">
                   <span>Terakhir Dicatat</span>
-                  <span>{new Date(latestBP.logged_at).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}</span>
+                  <span>
+                    {new Date(latestBP.logged_at).toLocaleDateString("id-ID", {
+                      day: "numeric",
+                      month: "short",
+                      hour: "2-digit",
+                      minute: "2-digit",
+                    })}
+                  </span>
                 </div>
               )}
             </div>
@@ -1099,7 +1335,9 @@ export default function App() {
             <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 p-6 shadow-sm flex flex-col justify-between hover:border-slate-300 dark:hover:border-slate-700 transition-all duration-200">
               <div>
                 <div className="flex items-center justify-between mb-4">
-                  <span className="text-xs font-bold text-slate-400 dark:text-slate-500 dark:text-slate-400 tracking-wider">Berat Badan Terakhir</span>
+                  <span className="text-xs font-bold text-slate-400 dark:text-slate-500 dark:text-slate-400 tracking-wider">
+                    Berat Badan Terakhir
+                  </span>
                   <Scale className="h-5.5 w-5.5 text-amber-500" />
                 </div>
                 {latestWeight ? (
@@ -1108,52 +1346,75 @@ export default function App() {
                       <span className="text-3xl font-extrabold text-slate-800 dark:text-slate-100 font-mono tracking-tight">
                         {Number(latestWeight.weight).toFixed(1)}
                       </span>
-                      <span className="text-xs font-semibold text-slate-400 dark:text-slate-500 dark:text-slate-400">kg</span>
-                      
+                      <span className="text-xs font-semibold text-slate-400 dark:text-slate-500 dark:text-slate-400">
+                        kg
+                      </span>
+
                       {/* Weight change badge */}
                       {weightChange && (
-                        <span className={`ml-2 inline-flex items-center gap-0.5 text-xs font-bold px-2 py-0.5 rounded-full ${
-                          weightChange.isLoss 
-                            ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300' 
-                            : weightChange.isGain 
-                              ? 'bg-rose-100 text-rose-700 dark:bg-rose-500/15 dark:text-rose-300' 
-                              : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 dark:bg-white/10 dark:text-slate-300'
-                        }`}>
-                          <TrendingUp className={`h-3 w-3 ${weightChange.isLoss ? 'rotate-180 text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`} />
-                          <span>{weightChange.isLoss ? '-' : '+'}{weightChange.value} kg</span>
+                        <span
+                          className={`ml-2 inline-flex items-center gap-0.5 text-xs font-bold px-2 py-0.5 rounded-full ${
+                            weightChange.isLoss
+                              ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300"
+                              : weightChange.isGain
+                              ? "bg-rose-100 text-rose-700 dark:bg-rose-500/15 dark:text-rose-300"
+                              : "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 dark:bg-white/10 dark:text-slate-300"
+                          }`}
+                        >
+                          <TrendingUp
+                            className={`h-3 w-3 ${
+                              weightChange.isLoss
+                                ? "rotate-180 text-emerald-600 dark:text-emerald-400"
+                                : "text-rose-600 dark:text-rose-400"
+                            }`}
+                          />
+                          <span>
+                            {weightChange.isLoss ? "-" : "+"}
+                            {weightChange.value} kg
+                          </span>
                         </span>
                       )}
                     </div>
-                    
+
                     <div className="mt-3">
                       <p className="text-xs text-slate-600 dark:text-slate-300 dark:text-slate-400 leading-relaxed">
-                        Melacak fluktuasi berat badan secara konsisten membantu memahami korelasi retensi cairan atau asupan nutrisi harian Anda terhadap tekanan darah.
+                        Melacak fluktuasi berat badan secara konsisten membantu
+                        memahami korelasi retensi cairan atau asupan nutrisi
+                        harian Anda terhadap tekanan darah.
                       </p>
                     </div>
 
                     {weightProgress ? (
                       <div className="mt-4 pt-3 border-t border-slate-100 dark:border-slate-800/80 space-y-2">
                         <div className="flex items-center justify-between text-xs">
-                          <span className="text-slate-600 dark:text-slate-300 font-semibold">Target: {weightProgress.target.toFixed(1)} kg</span>
-                          <span className="text-amber-500 dark:text-amber-400 font-extrabold">{weightProgress.percent}%</span>
+                          <span className="text-slate-600 dark:text-slate-300 font-semibold">
+                            Target: {weightProgress.target.toFixed(1)} kg
+                          </span>
+                          <span className="text-amber-500 dark:text-amber-400 font-extrabold">
+                            {weightProgress.percent}%
+                          </span>
                         </div>
                         <div className="w-full h-2 bg-slate-100 dark:bg-slate-800 dark:bg-slate-800 rounded-full overflow-hidden">
-                          <div 
-                            className="bg-amber-400 h-full rounded-full transition-all duration-500" 
+                          <div
+                            className="bg-amber-400 h-full rounded-full transition-all duration-500"
                             style={{ width: `${weightProgress.percent}%` }}
                           />
                         </div>
                         <p className="text-[10px] text-slate-500 dark:text-slate-400 font-medium">
-                          {weightProgress.isCompleted 
-                            ? 'Target berat badan Anda telah tercapai! 🎉 Luar biasa!' 
-                            : `${weightProgress.isLoss ? 'Kurang' : 'Butuh'} ${weightProgress.diff.toFixed(1)} kg lagi menuju target.`
-                          }
+                          {weightProgress.isCompleted
+                            ? "Target berat badan Anda telah tercapai! 🎉 Luar biasa!"
+                            : `${
+                                weightProgress.isLoss ? "Kurang" : "Butuh"
+                              } ${weightProgress.diff.toFixed(
+                                1
+                              )} kg lagi menuju target.`}
                         </p>
                       </div>
                     ) : (
                       <div className="mt-4 pt-3 border-t border-slate-100 dark:border-slate-800/80">
                         <p className="text-[10px] text-slate-500 dark:text-slate-400 italic">
-                          Atur target berat badan di tab profil untuk melacak progres pencapaian Anda.
+                          Atur target berat badan di tab profil untuk melacak
+                          progres pencapaian Anda.
                         </p>
                       </div>
                     )}
@@ -1166,7 +1427,9 @@ export default function App() {
                           Body Mass Index (BMI)
                         </span>
                         {bmiData && (
-                          <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded border ${bmiData.colorClass}`}>
+                          <span
+                            className={`text-[9px] font-bold px-1.5 py-0.5 rounded border ${bmiData.colorClass}`}
+                          >
                             {bmiData.category}
                           </span>
                         )}
@@ -1178,7 +1441,9 @@ export default function App() {
                             <span className="text-xl font-extrabold text-slate-800 dark:text-slate-100 font-mono tracking-tight">
                               {bmiData.value}
                             </span>
-                            <span className="text-[9px] font-semibold text-slate-500 dark:text-slate-400">skor BMI</span>
+                            <span className="text-[9px] font-semibold text-slate-500 dark:text-slate-400">
+                              skor BMI
+                            </span>
                           </div>
                           <p className="text-[10px] text-slate-600 dark:text-slate-300 leading-normal">
                             {bmiData.suggestion}
@@ -1190,12 +1455,13 @@ export default function App() {
                       ) : (
                         <div className="bg-slate-50 dark:bg-slate-800/30 border border-slate-200 dark:border-slate-700 dark:border-slate-850 rounded-xl p-2.5 text-center">
                           <p className="text-[10px] text-slate-600 dark:text-slate-300 dark:text-slate-400 mb-1.5 leading-normal">
-                            Atur tinggi badan di tab profil untuk menghitung BMI secara otomatis.
+                            Atur tinggi badan di tab profil untuk menghitung BMI
+                            secara otomatis.
                           </p>
                           <button
                             type="button"
                             onClick={() => {
-                              setActiveMainTab('seting');
+                              setActiveMainTab("seting");
                               setIsEditingProfile(true);
                             }}
                             className="inline-flex items-center gap-1 text-[10px] font-bold text-amber-600 dark:text-amber-400 hover:text-amber-700 dark:hover:text-amber-300 transition-colors cursor-pointer"
@@ -1208,14 +1474,26 @@ export default function App() {
                   </div>
                 ) : (
                   <div className="py-6 text-center">
-                    <p className="text-xs text-slate-400 dark:text-slate-500 dark:text-slate-400 italic">Belum ada riwayat berat badan</p>
+                    <p className="text-xs text-slate-400 dark:text-slate-500 dark:text-slate-400 italic">
+                      Belum ada riwayat berat badan
+                    </p>
                   </div>
                 )}
               </div>
               {latestWeight && (
                 <div className="border-t border-slate-100 dark:border-slate-800/80 pt-3 mt-4 flex items-center justify-between text-[10px] text-slate-400 dark:text-slate-500 dark:text-slate-400 font-semibold font-mono">
                   <span>Terakhir Dicatat</span>
-                  <span>{new Date(latestWeight.logged_at).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}</span>
+                  <span>
+                    {new Date(latestWeight.logged_at).toLocaleDateString(
+                      "id-ID",
+                      {
+                        day: "numeric",
+                        month: "short",
+                        hour: "2-digit",
+                        minute: "2-digit",
+                      }
+                    )}
+                  </span>
                 </div>
               )}
             </div>
@@ -1224,7 +1502,9 @@ export default function App() {
             <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 p-6 shadow-sm flex flex-col justify-between hover:border-slate-300 dark:hover:border-slate-700 transition-all duration-200">
               <div>
                 <div className="flex items-center justify-between mb-4">
-                  <span className="text-xs font-bold text-slate-400 dark:text-slate-500 dark:text-slate-400 tracking-wider">Rata-Rata 7 Hari Terakhir</span>
+                  <span className="text-xs font-bold text-slate-400 dark:text-slate-500 dark:text-slate-400 tracking-wider">
+                    Rata-Rata 7 Hari Terakhir
+                  </span>
                   <Calendar className="h-5.5 w-5.5 text-indigo-500 dark:text-indigo-400" />
                 </div>
                 {weeklySummary.bpCount > 0 || weeklySummary.weightCount > 0 ? (
@@ -1232,17 +1512,27 @@ export default function App() {
                     {/* BP Average Section */}
                     {weeklySummary.avgSystolic && weeklySummary.avgDiastolic ? (
                       <div>
-                        <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 dark:text-slate-400 tracking-wider block mb-1">Tekanan Darah</span>
+                        <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 dark:text-slate-400 tracking-wider block mb-1">
+                          Tekanan Darah
+                        </span>
                         <div className="flex items-baseline gap-1.5">
                           <span className="text-2xl font-extrabold text-slate-800 dark:text-slate-100 font-mono tracking-tight">
-                            {Math.round(weeklySummary.avgSystolic)} / {Math.round(weeklySummary.avgDiastolic)}
+                            {Math.round(weeklySummary.avgSystolic)} /{" "}
+                            {Math.round(weeklySummary.avgDiastolic)}
                           </span>
-                          <span className="text-[11px] font-semibold text-slate-400 dark:text-slate-500 dark:text-slate-400">mmHg</span>
+                          <span className="text-[11px] font-semibold text-slate-400 dark:text-slate-500 dark:text-slate-400">
+                            mmHg
+                          </span>
                         </div>
                         {(() => {
-                          const evalBP = getBPCategoryDetails(Math.round(weeklySummary.avgSystolic), Math.round(weeklySummary.avgDiastolic));
+                          const evalBP = getBPCategoryDetails(
+                            Math.round(weeklySummary.avgSystolic),
+                            Math.round(weeklySummary.avgDiastolic)
+                          );
                           return (
-                            <span className={`inline-block text-[9px] font-bold px-2 py-0.5 rounded-md mt-1 border ${evalBP.bg} ${evalBP.border} ${evalBP.text}`}>
+                            <span
+                              className={`inline-block text-[9px] font-bold px-2 py-0.5 rounded-md mt-1 border ${evalBP.bg} ${evalBP.border} ${evalBP.text}`}
+                            >
                               {evalBP.category}
                             </span>
                           );
@@ -1250,236 +1540,293 @@ export default function App() {
                       </div>
                     ) : (
                       <div>
-                        <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 dark:text-slate-400 tracking-wider block mb-1">Tekanan Darah</span>
-                        <p className="text-xs text-slate-400 italic">Belum ada rekaman tensi</p>
+                        <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 dark:text-slate-400 tracking-wider block mb-1">
+                          Tekanan Darah
+                        </span>
+                        <p className="text-xs text-slate-400 italic">
+                          Belum ada rekaman tensi
+                        </p>
                       </div>
                     )}
 
                     {/* Weight Average Section */}
                     {weeklySummary.avgWeight ? (
                       <div className="pt-2 border-t border-slate-100 dark:border-slate-800/80">
-                        <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 dark:text-slate-400 tracking-wider block mb-1">Berat Badan</span>
+                        <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 dark:text-slate-400 tracking-wider block mb-1">
+                          Berat Badan
+                        </span>
                         <div className="flex items-baseline gap-1.5">
                           <span className="text-2xl font-extrabold text-slate-800 dark:text-slate-100 font-mono tracking-tight">
                             {weeklySummary.avgWeight.toFixed(1)}
                           </span>
-                          <span className="text-[11px] font-semibold text-slate-400 dark:text-slate-500 dark:text-slate-400">kg</span>
+                          <span className="text-[11px] font-semibold text-slate-400 dark:text-slate-500 dark:text-slate-400">
+                            kg
+                          </span>
                         </div>
                       </div>
                     ) : (
                       <div className="pt-2 border-t border-slate-100 dark:border-slate-800/80">
-                        <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 dark:text-slate-400 tracking-wider block mb-1">Berat Badan</span>
-                        <p className="text-xs text-slate-400 italic">Belum ada rekaman berat</p>
+                        <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 dark:text-slate-400 tracking-wider block mb-1">
+                          Berat Badan
+                        </span>
+                        <p className="text-xs text-slate-400 italic">
+                          Belum ada rekaman berat
+                        </p>
                       </div>
                     )}
                   </div>
                 ) : (
                   <div className="py-6 text-center">
-                    <p className="text-xs text-slate-400 dark:text-slate-500 dark:text-slate-400 italic">Belum ada rekam medis dalam 7 hari terakhir.</p>
+                    <p className="text-xs text-slate-400 dark:text-slate-500 dark:text-slate-400 italic">
+                      Belum ada rekam medis dalam 7 hari terakhir.
+                    </p>
                   </div>
                 )}
               </div>
               <div className="border-t border-slate-100 dark:border-slate-800/80 pt-3 mt-4 flex items-center justify-between text-[10px] text-slate-400 dark:text-slate-500 dark:text-slate-400 font-semibold font-mono">
                 <span>Total Rekaman</span>
-                <span>{weeklySummary.bpCount + weeklySummary.weightCount} Data</span>
+                <span>
+                  {weeklySummary.bpCount + weeklySummary.weightCount} Data
+                </span>
               </div>
             </div>
-
           </section>
         )}
 
         {/* ROW 1.5: DAILY AI HEALTH TIPS */}
-        {activeMainTab === 'dashboard' && (bpLogs.length > 0 || weightLogs.length > 0) && (
-          <section id="ai-health-tips" className="mt-6 bg-gradient-to-r from-indigo-50/40 via-sky-50/40 to-white dark:from-indigo-950/10 dark:via-slate-900/40 dark:to-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 p-6 shadow-sm hover:border-indigo-200 dark:hover:border-indigo-900/50 transition-all duration-300 relative overflow-hidden animate-fade-in">
-            {/* Ambient Background Glow */}
-            <div className="absolute -right-16 -top-16 h-48 w-48 bg-indigo-400/10 dark:bg-indigo-500/5 rounded-full blur-3xl pointer-events-none" />
-            <div className="absolute -left-16 -bottom-16 h-48 w-48 bg-sky-400/10 dark:bg-sky-500/5 rounded-full blur-3xl pointer-events-none" />
+        {activeMainTab === "dashboard" &&
+          (bpLogs.length > 0 || weightLogs.length > 0) && (
+            <section
+              id="ai-health-tips"
+              className="mt-6 bg-gradient-to-r from-indigo-50/40 via-sky-50/40 to-white dark:from-indigo-950/10 dark:via-slate-900/40 dark:to-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 p-6 shadow-sm hover:border-indigo-200 dark:hover:border-indigo-900/50 transition-all duration-300 relative overflow-hidden animate-fade-in"
+            >
+              {/* Ambient Background Glow */}
+              <div className="absolute -right-16 -top-16 h-48 w-48 bg-indigo-400/10 dark:bg-indigo-500/5 rounded-full blur-3xl pointer-events-none" />
+              <div className="absolute -left-16 -bottom-16 h-48 w-48 bg-sky-400/10 dark:bg-sky-500/5 rounded-full blur-3xl pointer-events-none" />
 
-            <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 relative z-10">
-              <div className="flex items-start gap-4">
-                <div className="p-3.5 bg-indigo-600 rounded-2xl text-white shadow-md shadow-indigo-100 dark:shadow-none shrink-0">
-                  <Sparkles className="h-6 w-6 animate-pulse" />
-                </div>
-                <div>
-                  <div className="flex flex-wrap items-center gap-2">
-                    <h3 className="text-sm font-extrabold text-slate-800 dark:text-slate-100 tracking-wider">
-                      Tips Kesehatan Harian AI
-                    </h3>
-                    {healthTip?.focus && (
-                      <span className="text-[10px] font-extrabold px-2.5 py-0.5 rounded-full bg-indigo-100 dark:bg-indigo-950/50 text-indigo-700 dark:text-indigo-400 border border-indigo-200/50 dark:border-indigo-900/30">
-                        {healthTip.focus}
-                      </span>
-                    )}
+              <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 relative z-10">
+                <div className="flex items-start gap-4">
+                  <div className="p-3.5 bg-indigo-600 rounded-2xl text-white shadow-md shadow-indigo-100 dark:shadow-none shrink-0">
+                    <Sparkles className="h-6 w-6 animate-pulse" />
                   </div>
-                  <p className="text-xs text-slate-500 dark:text-slate-400 font-medium mt-0.5">
-                    Rekomendasi gaya hidup & gizi praktis yang dipersonalisasi dari asisten medis AI Anda harian
-                  </p>
-
-                  <div className="mt-4">
-                    {isGeneratingTip ? (
-                      <div className="flex items-center gap-3 py-1">
-                        <div className="h-4.5 w-4.5 border-2 border-indigo-600 border-t-transparent rounded-full animate-spin shrink-0" />
-                        <span className="text-xs text-slate-500 dark:text-slate-400 italic font-semibold animate-pulse">
-                          Menganalisis rekam medis terakhir dan menyusun tips untuk Anda...
+                  <div>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <h3 className="text-sm font-extrabold text-slate-800 dark:text-slate-100 tracking-wider">
+                        Tips Kesehatan Harian AI
+                      </h3>
+                      {healthTip?.focus && (
+                        <span className="text-[10px] font-extrabold px-2.5 py-0.5 rounded-full bg-indigo-100 dark:bg-indigo-950/50 text-indigo-700 dark:text-indigo-400 border border-indigo-200/50 dark:border-indigo-900/30">
+                          {healthTip.focus}
                         </span>
-                      </div>
-                    ) : tipError ? (
-                      <div className="bg-rose-50 dark:bg-rose-950/20 border border-rose-150 dark:border-rose-900/30 rounded-xl p-3 text-xs text-rose-600 dark:text-rose-400 flex items-start gap-2">
-                        <AlertTriangle className="h-4.5 w-4.5 shrink-0 mt-0.5" />
-                        <div>
-                          <p className="font-bold">Gagal memuat tips harian</p>
-                          <p className="mt-0.5 leading-relaxed font-medium">{tipError}</p>
-                          <p className="mt-1 text-[10px] opacity-80">
-                            Silakan pastikan parameter kunci API Anda telah terkonfigurasi di menu <strong>Settings &gt; Secrets</strong>.
-                          </p>
+                      )}
+                    </div>
+                    <p className="text-xs text-slate-500 dark:text-slate-400 font-medium mt-0.5">
+                      Rekomendasi gaya hidup & gizi praktis yang dipersonalisasi
+                      dari asisten medis AI Anda harian
+                    </p>
+
+                    <div className="mt-4">
+                      {isGeneratingTip ? (
+                        <div className="flex items-center gap-3 py-1">
+                          <div className="h-4.5 w-4.5 border-2 border-indigo-600 border-t-transparent rounded-full animate-spin shrink-0" />
+                          <span className="text-xs text-slate-500 dark:text-slate-400 italic font-semibold animate-pulse">
+                            Menganalisis rekam medis terakhir dan menyusun tips
+                            untuk Anda...
+                          </span>
                         </div>
-                      </div>
-                    ) : healthTip ? (
-                      <div className="text-sm font-semibold text-slate-700 dark:text-slate-200 leading-relaxed max-w-3xl border-l-2 border-indigo-500 pl-3">
-                        "{healthTip.tip}"
-                      </div>
-                    ) : (
-                      <p className="text-xs text-slate-400 italic">
-                        Belum ada tips yang dimuat. Klik tombol segarkan untuk menghasilkan tips AI.
+                      ) : tipError ? (
+                        <div className="bg-rose-50 dark:bg-rose-950/20 border border-rose-150 dark:border-rose-900/30 rounded-xl p-3 text-xs text-rose-600 dark:text-rose-400 flex items-start gap-2">
+                          <AlertTriangle className="h-4.5 w-4.5 shrink-0 mt-0.5" />
+                          <div>
+                            <p className="font-bold">
+                              Gagal memuat tips harian
+                            </p>
+                            <p className="mt-0.5 leading-relaxed font-medium">
+                              {tipError}
+                            </p>
+                            <p className="mt-1 text-[10px] opacity-80">
+                              Silakan pastikan parameter kunci API Anda telah
+                              terkonfigurasi di menu{" "}
+                              <strong>Settings &gt; Secrets</strong>.
+                            </p>
+                          </div>
+                        </div>
+                      ) : healthTip ? (
+                        <div className="text-sm font-semibold text-slate-700 dark:text-slate-200 leading-relaxed max-w-3xl border-l-2 border-indigo-500 pl-3">
+                          "{healthTip.tip}"
+                        </div>
+                      ) : (
+                        <p className="text-xs text-slate-400 italic">
+                          Belum ada tips yang dimuat. Klik tombol segarkan untuk
+                          menghasilkan tips AI.
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="shrink-0 flex items-center self-end md:self-center">
+                  <button
+                    type="button"
+                    onClick={() => handleGenerateHealthTip(true)}
+                    disabled={isGeneratingTip}
+                    className="px-4 py-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 hover:border-indigo-300 dark:hover:border-indigo-900 rounded-xl hover:bg-slate-50 dark:hover:bg-slate-900/50 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 dark:text-slate-300 text-xs font-bold transition-all flex items-center gap-2 active:scale-95 disabled:opacity-50 disabled:pointer-events-none cursor-pointer shadow-xs shrink-0"
+                  >
+                    <RefreshCw
+                      className={`h-4 w-4 text-indigo-500 ${
+                        isGeneratingTip ? "animate-spin" : ""
+                      }`}
+                    />
+                    <span>Segarkan Tips</span>
+                  </button>
+                </div>
+              </div>
+            </section>
+          )}
+
+        {/* STATISTIK TAB */}
+        {activeMainTab === "statistik" && (
+          <section id="statistik-view" className="mt-6 space-y-6">
+            <StatistikPanel bpLogs={bpLogs} weightLogs={weightLogs} />
+
+            <section className="grid grid-cols-1 lg:grid-cols-12 gap-6 animate-fade-in">
+              {/* Detailed Graph Representation (Col 8) */}
+              <div className="lg:col-span-8 bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 p-6 shadow-sm hover:border-slate-300 transition-all duration-200 flex flex-col justify-between">
+                <div>
+                  {/* Section Header with Tabs */}
+                  <div className="flex flex-col sm:flex-row items-center justify-between border-b border-slate-100 pb-4 mb-6 gap-4">
+                    <div>
+                      <h2 className="text-base font-extrabold text-slate-800 dark:text-slate-100 tracking-tight flex items-center gap-2">
+                        <TrendingUp className="h-5 w-5 text-indigo-600" />
+                        Grafik Tren Perkembangan Kesehatan
+                      </h2>
+                      <p className="text-xs text-slate-500 dark:text-slate-400 font-medium">
+                        Visualisasi perkembangan tensi darah dan berat badan
+                        Anda
                       </p>
-                    )}
-                  </div>
-                </div>
-              </div>
+                    </div>
 
-              <div className="shrink-0 flex items-center self-end md:self-center">
-                <button
-                  type="button"
-                  onClick={() => handleGenerateHealthTip(true)}
-                  disabled={isGeneratingTip}
-                  className="px-4 py-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 hover:border-indigo-300 dark:hover:border-indigo-900 rounded-xl hover:bg-slate-50 dark:hover:bg-slate-900/50 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 dark:text-slate-300 text-xs font-bold transition-all flex items-center gap-2 active:scale-95 disabled:opacity-50 disabled:pointer-events-none cursor-pointer shadow-xs shrink-0"
-                >
-                  <RefreshCw className={`h-4 w-4 text-indigo-500 ${isGeneratingTip ? 'animate-spin' : ''}`} />
-                  <span>Segarkan Tips</span>
-                </button>
-              </div>
-            </div>
-          </section>
-        )}
-                {/* ROW 2: CHARTS SHOWN ONLY ON DASHBOARD */}
-        {activeMainTab === 'dashboard' && (
-          <section className="grid grid-cols-1 lg:grid-cols-12 gap-6 animate-fade-in">
-            {/* Detailed Graph Representation (Col 8) */}
-            <div className="lg:col-span-8 bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 p-6 shadow-sm hover:border-slate-300 transition-all duration-200 flex flex-col justify-between">
-              <div>
-                {/* Section Header with Tabs */}
-                <div className="flex flex-col sm:flex-row items-center justify-between border-b border-slate-100 pb-4 mb-6 gap-4">
-                  <div>
-                    <h2 className="text-base font-extrabold text-slate-800 dark:text-slate-100 tracking-tight flex items-center gap-2">
-                      <TrendingUp className="h-5 w-5 text-indigo-600" />
-                      Grafik Tren Perkembangan Kesehatan
-                    </h2>
-                    <p className="text-xs text-slate-500 dark:text-slate-400 font-medium">Visualisasi perkembangan tensi darah dan berat badan Anda</p>
-                  </div>
-
-                  {/* Tabs Trigger */}
-                  <div className="flex bg-slate-100 dark:bg-slate-800/80 p-1.5 rounded-xl border border-slate-200 dark:border-slate-700/50 shrink-0">
-                    <button
-                      type="button"
-                      onClick={() => setCurrentTab('bp')}
-                      className={`text-xs font-bold px-4 py-2 rounded-lg transition-all cursor-pointer ${
-                        currentTab === 'bp'
-                          ? 'bg-white text-indigo-600 shadow-md shadow-slate-100'
-                          : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-100'
-                      }`}
-                    >
-                      Grafik Tensi & Nadi
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setCurrentTab('weight')}
-                      className={`text-xs font-bold px-4 py-2 rounded-lg transition-all cursor-pointer ${
-                        currentTab === 'weight'
-                          ? 'bg-white text-amber-600 shadow-md shadow-slate-100'
-                          : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-100'
-                      }`}
-                    >
-                      Grafik Berat Badan
-                    </button>
-                  </div>
-                </div>
-
-                {/* Render Active Chart */}
-                <div className="mt-2 min-h-[320px] overflow-hidden">
-                  <AnimatePresence mode="wait">
-                    {isLoading && bpLogs.length === 0 && weightLogs.length === 0 ? (
-                      <motion.div
-                        key="loading"
-                        initial={{ opacity: 0, y: 10 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        exit={{ opacity: 0, y: -10 }}
-                        transition={{ duration: 0.2 }}
-                        className="flex items-center justify-center h-[320px] flex-col gap-3"
+                    {/* Tabs Trigger */}
+                    <div className="flex bg-slate-100 dark:bg-slate-800/80 p-1.5 rounded-xl border border-slate-200 dark:border-slate-700/50 shrink-0">
+                      <button
+                        type="button"
+                        onClick={() => setCurrentTab("bp")}
+                        className={`text-xs font-bold px-4 py-2 rounded-lg transition-all cursor-pointer ${
+                          currentTab === "bp"
+                            ? "bg-white text-indigo-600 shadow-md shadow-slate-100"
+                            : "text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-100"
+                        }`}
                       >
-                        <div className="inline-block h-8 w-8 animate-spin rounded-full border-4 border-slate-200 dark:border-slate-700 border-t-indigo-600"></div>
-                        <p className="text-xs font-semibold text-slate-400">Sinkronisasi data pertama...</p>
-                      </motion.div>
-                    ) : currentTab === 'bp' ? (
-                      <motion.div
-                        key="bp"
-                        initial={{ opacity: 0, x: -20 }}
-                        animate={{ opacity: 1, x: 0 }}
-                        exit={{ opacity: 0, x: 20 }}
-                        transition={{ duration: 0.2, ease: "easeInOut" }}
+                        Grafik Tensi & Nadi
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setCurrentTab("weight")}
+                        className={`text-xs font-bold px-4 py-2 rounded-lg transition-all cursor-pointer ${
+                          currentTab === "weight"
+                            ? "bg-white text-amber-600 shadow-md shadow-slate-100"
+                            : "text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-100"
+                        }`}
                       >
-                        <BloodPressureChart data={bpLogs} />
-                      </motion.div>
-                    ) : (
-                      <motion.div
-                        key="weight"
-                        initial={{ opacity: 0, x: 20 }}
-                        animate={{ opacity: 1, x: 0 }}
-                        exit={{ opacity: 0, x: -20 }}
-                        transition={{ duration: 0.2, ease: "easeInOut" }}
-                      >
-                        <WeightChart data={weightLogs} />
-                      </motion.div>
-                    )}
-                  </AnimatePresence>
-                </div>
-              </div>
-            </div>
+                        Grafik Berat Badan
+                      </button>
+                    </div>
+                  </div>
 
-            {/* Trend Pie Chart Card (Col 4) */}
-            <div className="lg:col-span-4 bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 p-6 shadow-sm flex flex-col justify-between hover:border-slate-300 transition-all duration-200">
-              <div>
-                <div className="flex items-center justify-between mb-2">
-                  <div>
-                    <h3 className="text-base font-extrabold text-slate-800 dark:text-slate-100 tracking-tight">Tren Kesehatan</h3>
-                    <p className="text-xs text-slate-500 dark:text-slate-400 font-medium">Berdasarkan proporsi diagnosis tensi darah {trendPeriod === 'monthly' ? '30 hari' : '1 tahun'} terakhir</p>
+                  {/* Render Active Chart */}
+                  <div className="mt-2 min-h-[320px] overflow-hidden">
+                    <AnimatePresence mode="wait">
+                      {isLoading &&
+                      bpLogs.length === 0 &&
+                      weightLogs.length === 0 ? (
+                        <motion.div
+                          key="loading"
+                          initial={{ opacity: 0, y: 10 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          exit={{ opacity: 0, y: -10 }}
+                          transition={{ duration: 0.2 }}
+                          className="flex items-center justify-center h-[320px] flex-col gap-3"
+                        >
+                          <div className="inline-block h-8 w-8 animate-spin rounded-full border-4 border-slate-200 dark:border-slate-700 border-t-indigo-600"></div>
+                          <p className="text-xs font-semibold text-slate-400">
+                            Sinkronisasi data pertama...
+                          </p>
+                        </motion.div>
+                      ) : currentTab === "bp" ? (
+                        <motion.div
+                          key="bp"
+                          initial={{ opacity: 0, x: -20 }}
+                          animate={{ opacity: 1, x: 0 }}
+                          exit={{ opacity: 0, x: 20 }}
+                          transition={{ duration: 0.2, ease: "easeInOut" }}
+                        >
+                          <BloodPressureChart data={bpLogs} />
+                        </motion.div>
+                      ) : (
+                        <motion.div
+                          key="weight"
+                          initial={{ opacity: 0, x: 20 }}
+                          animate={{ opacity: 1, x: 0 }}
+                          exit={{ opacity: 0, x: -20 }}
+                          transition={{ duration: 0.2, ease: "easeInOut" }}
+                        >
+                          <WeightChart data={weightLogs} />
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
                   </div>
-                  <div className="flex bg-slate-100 dark:bg-slate-800 rounded-lg p-0.5 ml-2 shrink-0">
-                    <button
-                      onClick={() => setTrendPeriod('monthly')}
-                      className={`text-[10px] font-bold px-2.5 py-1 rounded-md transition-all ${trendPeriod === 'monthly' ? 'bg-white dark:bg-slate-700 text-indigo-600 dark:text-indigo-400 shadow-sm' : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-300'}`}
-                    >
-                      Bulan
-                    </button>
-                    <button
-                      onClick={() => setTrendPeriod('yearly')}
-                      className={`text-[10px] font-bold px-2.5 py-1 rounded-md transition-all ${trendPeriod === 'yearly' ? 'bg-white dark:bg-slate-700 text-indigo-600 dark:text-indigo-400 shadow-sm' : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-300'}`}
-                    >
-                      Tahun
-                    </button>
-                  </div>
-                </div>
-                
-                <div className="mt-4 flex justify-center">
-                  <MonthlyTrendPieChart data={bpLogs} period={trendPeriod} />
                 </div>
               </div>
-              
-            </div>
+
+              {/* Trend Pie Chart Card (Col 4) */}
+              <div className="lg:col-span-4 bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 p-6 shadow-sm flex flex-col justify-between hover:border-slate-300 transition-all duration-200">
+                <div>
+                  <div className="flex items-center justify-between mb-2">
+                    <div>
+                      <h3 className="text-base font-extrabold text-slate-800 dark:text-slate-100 tracking-tight">
+                        Tren Kesehatan
+                      </h3>
+                      <p className="text-xs text-slate-500 dark:text-slate-400 font-medium">
+                        Berdasarkan proporsi diagnosis tensi darah{" "}
+                        {trendPeriod === "monthly" ? "30 hari" : "1 tahun"}{" "}
+                        terakhir
+                      </p>
+                    </div>
+                    <div className="flex bg-slate-100 dark:bg-slate-800 rounded-lg p-0.5 ml-2 shrink-0">
+                      <button
+                        onClick={() => setTrendPeriod("monthly")}
+                        className={`text-[10px] font-bold px-2.5 py-1 rounded-md transition-all ${
+                          trendPeriod === "monthly"
+                            ? "bg-white dark:bg-slate-700 text-indigo-600 dark:text-indigo-400 shadow-sm"
+                            : "text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-300"
+                        }`}
+                      >
+                        Bulan
+                      </button>
+                      <button
+                        onClick={() => setTrendPeriod("yearly")}
+                        className={`text-[10px] font-bold px-2.5 py-1 rounded-md transition-all ${
+                          trendPeriod === "yearly"
+                            ? "bg-white dark:bg-slate-700 text-indigo-600 dark:text-indigo-400 shadow-sm"
+                            : "text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-300"
+                        }`}
+                      >
+                        Tahun
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="mt-4 flex justify-center">
+                    <MonthlyTrendPieChart data={bpLogs} period={trendPeriod} />
+                  </div>
+                </div>
+              </div>
+            </section>
           </section>
         )}
 
         {/* INPUT DATA TAB */}
-        {activeMainTab === 'input' && (
+        {activeMainTab === "input" && (
           <div className="max-w-2xl mx-auto animate-fade-in space-y-6">
             <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 p-6 shadow-sm hover:border-slate-300 transition-all duration-200">
               {/* Form Header */}
@@ -1488,18 +1835,21 @@ export default function App() {
                   <Plus className="h-5 w-5 text-indigo-600" />
                   Catat Pengukuran Baru
                 </h2>
-                <p className="text-xs text-slate-500 dark:text-slate-400 font-medium">Tambahkan rekaman tekanan darah, detak jantung, atau berat badan Anda secara teratur</p>
+                <p className="text-xs text-slate-500 dark:text-slate-400 font-medium">
+                  Tambahkan rekaman tekanan darah, detak jantung, atau berat
+                  badan Anda secara teratur
+                </p>
               </div>
 
               {/* Form Tab Toggles */}
               <div className="flex bg-slate-100 dark:bg-slate-800/80 p-1.5 rounded-xl border border-slate-200 dark:border-slate-700/50 mb-6 gap-2">
                 <button
                   type="button"
-                  onClick={() => setFormTab('bp')}
+                  onClick={() => setFormTab("bp")}
                   className={`flex-1 text-center py-2.5 px-1 text-xs font-bold rounded-lg transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
-                    formTab === 'bp'
-                      ? 'bg-indigo-600 text-white shadow-md shadow-indigo-100'
-                      : 'text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-900/50 hover:text-slate-750'
+                    formTab === "bp"
+                      ? "bg-indigo-600 text-white shadow-md shadow-indigo-100"
+                      : "text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-900/50 hover:text-slate-750"
                   }`}
                 >
                   <Heart className="h-3.5 w-3.5" />
@@ -1507,11 +1857,11 @@ export default function App() {
                 </button>
                 <button
                   type="button"
-                  onClick={() => setFormTab('weight')}
+                  onClick={() => setFormTab("weight")}
                   className={`flex-1 text-center py-2.5 px-1 text-xs font-bold rounded-lg transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
-                    formTab === 'weight'
-                      ? 'bg-amber-500 text-white shadow-md shadow-amber-100'
-                      : 'text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-900/50 hover:text-slate-750'
+                    formTab === "weight"
+                      ? "bg-amber-500 text-white shadow-md shadow-amber-100"
+                      : "text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-900/50 hover:text-slate-750"
                   }`}
                 >
                   <Scale className="h-3.5 w-3.5" />
@@ -1520,7 +1870,7 @@ export default function App() {
               </div>
 
               {/* Form Tensi */}
-              {formTab === 'bp' && (
+              {formTab === "bp" && (
                 <form onSubmit={handleAddBP} className="space-y-4">
                   {/* Grid Inputs */}
                   <div className="grid grid-cols-3 gap-3">
@@ -1540,7 +1890,9 @@ export default function App() {
                           required
                           className="w-full text-center font-bold text-base bg-slate-50 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-700 rounded-xl py-2.5 px-1 outline-none focus:border-indigo-500 dark:focus:border-indigo-400 focus:bg-white dark:focus:bg-slate-800 focus:ring-4 focus:ring-indigo-100/30 dark:focus:ring-indigo-900/30 transition-all font-mono text-rose-600 placeholder:text-slate-300"
                         />
-                        <span className="absolute bottom-1 right-0 left-0 text-[8px] font-bold text-slate-400 text-center pointer-events-none">mmHg</span>
+                        <span className="absolute bottom-1 right-0 left-0 text-[8px] font-bold text-slate-400 text-center pointer-events-none">
+                          mmHg
+                        </span>
                       </div>
                     </div>
 
@@ -1560,7 +1912,9 @@ export default function App() {
                           required
                           className="w-full text-center font-bold text-base bg-slate-50 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-700 rounded-xl py-2.5 px-1 outline-none focus:border-indigo-500 dark:focus:border-indigo-400 focus:bg-white dark:focus:bg-slate-800 focus:ring-4 focus:ring-indigo-100/30 dark:focus:ring-indigo-900/30 transition-all font-mono text-blue-600 placeholder:text-slate-300"
                         />
-                        <span className="absolute bottom-1 right-0 left-0 text-[8px] font-bold text-slate-400 text-center pointer-events-none">mmHg</span>
+                        <span className="absolute bottom-1 right-0 left-0 text-[8px] font-bold text-slate-400 text-center pointer-events-none">
+                          mmHg
+                        </span>
                       </div>
                     </div>
 
@@ -1580,7 +1934,9 @@ export default function App() {
                           required
                           className="w-full text-center font-bold text-base bg-slate-50 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-700 rounded-xl py-2.5 px-1 outline-none focus:border-indigo-500 dark:focus:border-indigo-400 focus:bg-white dark:focus:bg-slate-800 focus:ring-4 focus:ring-indigo-100/30 dark:focus:ring-indigo-900/30 transition-all font-mono text-emerald-600 placeholder:text-slate-300"
                         />
-                        <span className="absolute bottom-1 right-0 left-0 text-[8px] font-bold text-slate-400 text-center pointer-events-none">bpm</span>
+                        <span className="absolute bottom-1 right-0 left-0 text-[8px] font-bold text-slate-400 text-center pointer-events-none">
+                          bpm
+                        </span>
                       </div>
                     </div>
                   </div>
@@ -1588,7 +1944,8 @@ export default function App() {
                   {/* Date & Time Picker */}
                   <div>
                     <label className="block text-[11px] font-bold text-slate-400 tracking-wider mb-1.5 flex items-center gap-1">
-                      <Calendar className="h-3 w-3" /> Tanggal & Waktu Pengukuran
+                      <Calendar className="h-3 w-3" /> Tanggal & Waktu
+                      Pengukuran
                     </label>
                     <input
                       type="datetime-local"
@@ -1625,7 +1982,7 @@ export default function App() {
               )}
 
               {/* Form Berat Badan */}
-              {formTab === 'weight' && (
+              {formTab === "weight" && (
                 <form onSubmit={handleAddWeight} className="space-y-4">
                   {/* Weight Input */}
                   <div>
@@ -1644,14 +2001,17 @@ export default function App() {
                         required
                         className="w-full rounded-xl border border-slate-200 dark:border-slate-700 pl-4 pr-12 py-3 text-base font-extrabold text-amber-600 font-mono outline-none focus:border-amber-500 dark:focus:border-amber-400 focus:bg-white dark:focus:bg-slate-800 focus:ring-4 focus:ring-amber-100/30 dark:focus:ring-amber-900/30 bg-slate-50 dark:bg-slate-900/50 transition-all placeholder:text-amber-200"
                       />
-                      <span className="absolute inset-y-0 right-4 flex items-center text-xs font-bold text-slate-400 font-mono">kg</span>
+                      <span className="absolute inset-y-0 right-4 flex items-center text-xs font-bold text-slate-400 font-mono">
+                        kg
+                      </span>
                     </div>
                   </div>
 
                   {/* Date & Time Picker */}
                   <div>
                     <label className="block text-[11px] font-bold text-slate-400 tracking-wider mb-1.5 flex items-center gap-1">
-                      <Calendar className="h-3 w-3" /> Tanggal & Waktu Penimbangan
+                      <Calendar className="h-3 w-3" /> Tanggal & Waktu
+                      Penimbangan
                     </label>
                     <input
                       type="datetime-local"
@@ -1665,7 +2025,8 @@ export default function App() {
                   {/* Notes */}
                   <div>
                     <label className="block text-[11px] font-bold text-slate-400 tracking-wider mb-1.5">
-                      Catatan (Contoh: pagi sebelum sarapan, malam sehabis makan)
+                      Catatan (Contoh: pagi sebelum sarapan, malam sehabis
+                      makan)
                     </label>
                     <textarea
                       placeholder="Kondisi fisik saat menimbang..."
@@ -1693,23 +2054,26 @@ export default function App() {
                   <Database className="w-3.5 h-3.5 text-indigo-600" />
                 </div>
                 <p className="text-[10px] text-indigo-800 leading-normal font-semibold">
-                  {isDemo ? "Mode Demo lokal aman, tidak memerlukan internet." : "Data tersinkronisasi aman via Supabase Cloud."}
+                  {isDemo
+                    ? "Mode Demo lokal aman, tidak memerlukan internet."
+                    : "Data tersinkronisasi aman via Supabase Cloud."}
                 </p>
               </div>
             </div>
-            
+
             {/* Database mode advice footer */}
             <div className="border-t border-slate-100 mt-5 pt-3.5 flex items-center justify-between text-[10px] text-slate-400 font-bold tracking-wider">
               <span>Status Penyimpanan</span>
-              <span>{isDemo ? 'Offline Terenkripsi Lokal' : 'Tersinkron di Awan'}</span>
+              <span>
+                {isDemo ? "Offline Terenkripsi Lokal" : "Tersinkron di Awan"}
+              </span>
             </div>
           </div>
         )}
 
         {/* RIWAYAT TAB */}
-        {activeMainTab === 'riwayat' && (
+        {activeMainTab === "riwayat" && (
           <section className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 p-6 shadow-sm hover:border-slate-300 dark:hover:border-slate-700 transition-all duration-200 animate-fade-in">
-            
             {/* Header of Table */}
             <div className="flex flex-col md:flex-row items-center justify-between border-b border-slate-100 dark:border-slate-800/80 pb-5 mb-5 gap-4">
               <div>
@@ -1717,7 +2081,10 @@ export default function App() {
                   <FileText className="h-5 w-5 text-indigo-600" />
                   Daftar Riwayat Rekam Medis Mandiri
                 </h2>
-                <p className="text-xs text-slate-500 dark:text-slate-400 font-medium">Lihat, cari, saring, dan hapus data riwayat rekam medis harian Anda</p>
+                <p className="text-xs text-slate-500 dark:text-slate-400 font-medium">
+                  Lihat, cari, saring, dan hapus data riwayat rekam medis harian
+                  Anda
+                </p>
               </div>
 
               {/* Filters and Utilities Area */}
@@ -1740,27 +2107,33 @@ export default function App() {
                 <div className="flex bg-slate-100 dark:bg-slate-800/80 dark:bg-slate-800/80 rounded-xl p-1 border border-slate-200 dark:border-slate-700/50 dark:border-slate-700/50 shrink-0">
                   <button
                     type="button"
-                    onClick={() => setLogFilter('all')}
+                    onClick={() => setLogFilter("all")}
                     className={`text-[10px] font-bold px-3 py-1.5 rounded-lg transition-all cursor-pointer ${
-                      logFilter === 'all' ? 'bg-white dark:bg-slate-700 text-slate-800 dark:text-slate-100 shadow-md shadow-slate-150/40 dark:shadow-none' : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200'
+                      logFilter === "all"
+                        ? "bg-white dark:bg-slate-700 text-slate-800 dark:text-slate-100 shadow-md shadow-slate-150/40 dark:shadow-none"
+                        : "text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200"
                     }`}
                   >
                     Semua
                   </button>
                   <button
                     type="button"
-                    onClick={() => setLogFilter('bp')}
+                    onClick={() => setLogFilter("bp")}
                     className={`text-[10px] font-bold px-3 py-1.5 rounded-lg transition-all cursor-pointer ${
-                      logFilter === 'bp' ? 'bg-white dark:bg-slate-700 text-rose-600 dark:text-rose-400 shadow-md shadow-slate-150/40 dark:shadow-none' : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200'
+                      logFilter === "bp"
+                        ? "bg-white dark:bg-slate-700 text-rose-600 dark:text-rose-400 shadow-md shadow-slate-150/40 dark:shadow-none"
+                        : "text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200"
                     }`}
                   >
                     Tensi
                   </button>
                   <button
                     type="button"
-                    onClick={() => setLogFilter('weight')}
+                    onClick={() => setLogFilter("weight")}
                     className={`text-[10px] font-bold px-3 py-1.5 rounded-lg transition-all cursor-pointer ${
-                      logFilter === 'weight' ? 'bg-white dark:bg-slate-700 text-amber-600 dark:text-amber-400 shadow-md shadow-slate-150/40 dark:shadow-none' : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200'
+                      logFilter === "weight"
+                        ? "bg-white dark:bg-slate-700 text-amber-600 dark:text-amber-400 shadow-md shadow-slate-150/40 dark:shadow-none"
+                        : "text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200"
                     }`}
                   >
                     Berat
@@ -1781,13 +2154,17 @@ export default function App() {
                   <button
                     type="button"
                     onClick={() => {
-                      if (confirm('Apakah Anda ingin mereset basis data lokal Anda ke data default awal?')) {
+                      if (
+                        confirm(
+                          "Apakah Anda ingin mereset basis data lokal Anda ke data default awal?"
+                        )
+                      ) {
                         localDb.resetAll();
                         setBpLogs(localDb.getBPLogs());
                         setWeightLogs(localDb.getWeightLogs());
                         setProfile(localDb.getProfile());
                         setProfileNameInput(localDb.getProfile().full_name);
-                        showSuccessAlert('Database lokal berhasil di-reset.');
+                        showSuccessAlert("Database lokal berhasil di-reset.");
                       }
                     }}
                     title="Reset Database Lokal"
@@ -1816,36 +2193,52 @@ export default function App() {
                 <tbody className="divide-y divide-slate-100 dark:divide-slate-800/60">
                   {logsToShow.length === 0 ? (
                     <tr>
-                      <td colSpan={6} className="text-center py-12 text-slate-400 dark:text-slate-500 dark:text-slate-400 italic">
+                      <td
+                        colSpan={6}
+                        className="text-center py-12 text-slate-400 dark:text-slate-500 dark:text-slate-400 italic"
+                      >
                         Tidak ditemukan riwayat rekam medis harian yang sesuai.
                       </td>
                     </tr>
                   ) : (
                     logsToShow.map((item) => {
-                      const localTimeStr = new Date(item.date).toLocaleDateString('id-ID', {
-                        weekday: 'long',
-                        day: 'numeric',
-                        month: 'long',
-                        year: 'numeric',
+                      const localTimeStr = new Date(
+                        item.date
+                      ).toLocaleDateString("id-ID", {
+                        weekday: "long",
+                        day: "numeric",
+                        month: "long",
+                        year: "numeric",
                       });
-                      const hourStr = new Date(item.date).toLocaleTimeString('id-ID', {
-                        hour: '2-digit',
-                        minute: '2-digit',
-                      });
+                      const hourStr = new Date(item.date).toLocaleTimeString(
+                        "id-ID",
+                        {
+                          hour: "2-digit",
+                          minute: "2-digit",
+                        }
+                      );
 
                       return (
-                        <tr key={item.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/30 transition-colors">
+                        <tr
+                          key={item.id}
+                          className="hover:bg-slate-50 dark:hover:bg-slate-800/30 transition-colors"
+                        >
                           {/* Date/Time */}
                           <td className="px-5 py-3.5">
-                            <p className="font-bold text-slate-700 dark:text-slate-200">{localTimeStr}</p>
-                            <p className="text-[10px] text-slate-400 dark:text-slate-500 dark:text-slate-400 font-semibold font-mono mt-0.5">{hourStr}</p>
+                            <p className="font-bold text-slate-700 dark:text-slate-200">
+                              {localTimeStr}
+                            </p>
+                            <p className="text-[10px] text-slate-400 dark:text-slate-500 dark:text-slate-400 font-semibold font-mono mt-0.5">
+                              {hourStr}
+                            </p>
                           </td>
 
                           {/* Type indicator */}
                           <td className="px-5 py-3.5">
-                            {item.type === 'bp' ? (
+                            {item.type === "bp" ? (
                               <span className="inline-flex items-center gap-1.5 font-bold text-rose-600 dark:text-rose-400 bg-rose-50 dark:bg-rose-950/20 px-2.5 py-1 rounded-full text-[10px] border border-rose-100 dark:border-rose-900/30">
-                                <Heart className="h-3 w-3 fill-rose-100 dark:fill-rose-950/40" /> Tensi Darah
+                                <Heart className="h-3 w-3 fill-rose-100 dark:fill-rose-950/40" />{" "}
+                                Tensi Darah
                               </span>
                             ) : (
                               <span className="inline-flex items-center gap-1.5 font-bold text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/20 px-2.5 py-1 rounded-full text-[10px] border border-amber-100 dark:border-amber-900/30">
@@ -1857,16 +2250,20 @@ export default function App() {
                           {/* Results */}
                           <td className="px-5 py-3.5">
                             <div className="flex items-center gap-2">
-                              {item.type === 'bp' && (() => {
-                                const evalBP = getBPCategoryDetails(item.raw.systolic, item.raw.diastolic);
-                                return (
-                                  <span 
-                                    className="h-2.5 w-2.5 rounded-full shrink-0 shadow-sm animate-pulse" 
-                                    style={{ backgroundColor: evalBP.color }} 
-                                    title={`Kategori: ${evalBP.category}`}
-                                  />
-                                );
-                              })()}
+                              {item.type === "bp" &&
+                                (() => {
+                                  const evalBP = getBPCategoryDetails(
+                                    item.raw.systolic,
+                                    item.raw.diastolic
+                                  );
+                                  return (
+                                    <span
+                                      className="h-2.5 w-2.5 rounded-full shrink-0 shadow-sm animate-pulse"
+                                      style={{ backgroundColor: evalBP.color }}
+                                      title={`Kategori: ${evalBP.category}`}
+                                    />
+                                  );
+                                })()}
                               <span className="font-mono font-extrabold text-sm text-slate-800 dark:text-slate-100 tracking-tight">
                                 {item.valText}
                               </span>
@@ -1875,27 +2272,45 @@ export default function App() {
 
                           {/* Classification Evaluation */}
                           <td className="px-5 py-3.5">
-                            {item.type === 'bp' ? (
+                            {item.type === "bp" ? (
                               (() => {
-                                const evalBP = getBPCategoryDetails(item.raw.systolic, item.raw.diastolic);
+                                const evalBP = getBPCategoryDetails(
+                                  item.raw.systolic,
+                                  item.raw.diastolic
+                                );
                                 return (
-                                  <span className={`inline-flex items-center gap-1.5 text-[10px] font-bold px-2.5 py-1.5 rounded-full border ${evalBP.bg} ${evalBP.border || 'border-transparent'} ${evalBP.text}`}>
-                                    <span className="h-2 w-2 rounded-full shrink-0 shadow-xs" style={{ backgroundColor: evalBP.color }} />
+                                  <span
+                                    className={`inline-flex items-center gap-1.5 text-[10px] font-bold px-2.5 py-1.5 rounded-full border ${
+                                      evalBP.bg
+                                    } ${
+                                      evalBP.border || "border-transparent"
+                                    } ${evalBP.text}`}
+                                  >
+                                    <span
+                                      className="h-2 w-2 rounded-full shrink-0 shadow-xs"
+                                      style={{ backgroundColor: evalBP.color }}
+                                    />
                                     {evalBP.category}
                                   </span>
                                 );
                               })()
                             ) : (
-                              <span className="text-slate-400 dark:text-slate-500 dark:text-slate-400 italic text-[10px]">Lacak Mandiri</span>
+                              <span className="text-slate-400 dark:text-slate-500 dark:text-slate-400 italic text-[10px]">
+                                Lacak Mandiri
+                              </span>
                             )}
                           </td>
 
                           {/* Notes */}
                           <td className="px-5 py-3.5 max-w-[200px] truncate-3-lines">
                             {item.notes ? (
-                              <p className="text-slate-600 dark:text-slate-300 dark:text-slate-350 font-medium italic">"{item.notes}"</p>
+                              <p className="text-slate-600 dark:text-slate-300 dark:text-slate-350 font-medium italic">
+                                "{item.notes}"
+                              </p>
                             ) : (
-                              <span className="text-slate-350 dark:text-slate-600 dark:text-slate-300 italic">-</span>
+                              <span className="text-slate-350 dark:text-slate-600 dark:text-slate-300 italic">
+                                -
+                              </span>
                             )}
                           </td>
 
@@ -1903,7 +2318,7 @@ export default function App() {
                           <td className="px-5 py-3.5 text-center">
                             <button
                               onClick={() => {
-                                if (item.type === 'bp') {
+                                if (item.type === "bp") {
                                   handleDeleteBP(item.id);
                                 } else {
                                   handleDeleteWeight(item.id);
@@ -1928,24 +2343,21 @@ export default function App() {
               <span>Total {logsToShow.length} Rekaman Tersedia</span>
               <span>Di-filter Berdasarkan Parameter Sensor</span>
             </div>
-
           </section>
         )}
 
         {/* SETING TAB */}
-        {activeMainTab === 'seting' && (
+        {activeMainTab === "seting" && (
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 animate-fade-in">
-            
             {/* Left Column: Profile & Connection Setting (Col 7) */}
             <div className="lg:col-span-7 space-y-6">
-              
               {/* Profile Config Card */}
               <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 p-6 shadow-sm hover:border-slate-300 transition-all duration-200">
                 <h3 className="text-base font-extrabold text-slate-800 dark:text-slate-100 tracking-tight flex items-center gap-2 mb-4">
                   <User className="h-5 w-5 text-indigo-600" />
                   Profil Pengguna
                 </h3>
-                
+
                 <form onSubmit={handleUpdateProfile} className="space-y-4">
                   <div className="grid grid-cols-3 gap-2 sm:gap-4">
                     <div>
@@ -2014,7 +2426,7 @@ export default function App() {
                     <Database className="h-5 w-5 text-indigo-600" />
                     Penyimpanan & Koneksi Supabase
                   </h3>
-                  
+
                   {/* Status badge */}
                   <span className="inline-flex items-center gap-1.5 text-[10px] font-bold px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-100 dark:bg-emerald-950/30 dark:text-emerald-400 dark:border-emerald-900/40">
                     <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
@@ -2025,13 +2437,15 @@ export default function App() {
                 {/* Info block */}
                 <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-900 border border-slate-150 dark:border-slate-800 text-slate-600 dark:text-slate-300 dark:text-slate-400 text-xs leading-relaxed mb-5">
                   <p>
-                    <strong>Tersambung ke Supabase Cloud.</strong> Data rekam medis Anda otomatis tersinkronisasi aman dan terenkripsi. Aturan Keamanan RLS (Row Level Security) aktif melindungi data pribadi Anda.
+                    <strong>Tersambung ke Supabase Cloud.</strong> Data rekam
+                    medis Anda otomatis tersinkronisasi aman dan terenkripsi.
+                    Aturan Keamanan RLS (Row Level Security) aktif melindungi
+                    data pribadi Anda.
                   </p>
                 </div>
 
                 {/* Inline Config Form */}
                 <div className="space-y-4">
-
                   {/* Supabase URL */}
                   <div>
                     <label className="block text-[11px] font-bold text-slate-400 tracking-wider mb-1.5">
@@ -2044,7 +2458,7 @@ export default function App() {
                       disabled={isDemo}
                       onChange={(e) => {
                         const newUrl = e.target.value.trim();
-                        setCreds(prev => ({ ...prev, url: newUrl }));
+                        setCreds((prev) => ({ ...prev, url: newUrl }));
                       }}
                       className="w-full rounded-xl border border-slate-200 dark:border-slate-700 px-3.5 py-2.5 text-xs outline-none bg-slate-50 dark:bg-slate-900/50 focus:bg-white dark:focus:bg-slate-800 focus:border-indigo-500 dark:focus:border-indigo-400 focus:ring-4 focus:ring-indigo-100/30 dark:focus:ring-indigo-900/30 disabled:opacity-50 disabled:bg-slate-100 dark:bg-slate-800 font-mono text-slate-700 dark:text-slate-200 transition-all"
                     />
@@ -2062,7 +2476,7 @@ export default function App() {
                       disabled={isDemo}
                       onChange={(e) => {
                         const newKey = e.target.value.trim();
-                        setCreds(prev => ({ ...prev, anonKey: newKey }));
+                        setCreds((prev) => ({ ...prev, anonKey: newKey }));
                       }}
                       className="w-full rounded-xl border border-slate-200 dark:border-slate-700 px-3.5 py-2.5 text-xs outline-none bg-slate-50 dark:bg-slate-900/50 focus:bg-white dark:focus:bg-slate-800 focus:border-indigo-500 dark:focus:border-indigo-400 focus:ring-4 focus:ring-indigo-100/30 dark:focus:ring-indigo-900/30 disabled:opacity-50 disabled:bg-slate-100 dark:bg-slate-800 font-mono text-slate-700 dark:text-slate-200 transition-all"
                     />
@@ -2073,7 +2487,9 @@ export default function App() {
                     <button
                       type="button"
                       disabled={isDemo}
-                      onClick={() => handleSaveConfig(creds.url, creds.anonKey, false)}
+                      onClick={() =>
+                        handleSaveConfig(creds.url, creds.anonKey, false)
+                      }
                       className="flex-1 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs rounded-xl shadow-md shadow-indigo-100 transition-all active:scale-[0.98] disabled:opacity-50 disabled:pointer-events-none cursor-pointer"
                     >
                       Hubungkan ke Supabase Cloud
@@ -2088,12 +2504,10 @@ export default function App() {
                   </div>
                 </div>
               </div>
-
             </div>
 
             {/* Right Column: Schema SQL & Export Actions (Col 5) */}
             <div className="lg:col-span-5 space-y-6">
-              
               {/* Backups & Actions */}
               <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 p-6 shadow-sm hover:border-slate-300 transition-all duration-200">
                 <h3 className="text-base font-extrabold text-slate-800 dark:text-slate-100 tracking-tight flex items-center gap-2 mb-4">
@@ -2108,29 +2522,41 @@ export default function App() {
                     className="w-full p-3 bg-slate-50 dark:bg-slate-900/50 hover:bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 rounded-xl text-xs font-bold transition-all flex items-center justify-between active:scale-98 cursor-pointer"
                   >
                     <span className="flex items-center gap-2">
-                      <Download className="h-4 w-4 text-indigo-600" /> Ekspor Seluruh Data ke JSON
+                      <Download className="h-4 w-4 text-indigo-600" /> Ekspor
+                      Seluruh Data ke JSON
                     </span>
-                    <span className="text-[10px] text-slate-400 font-mono">Download</span>
+                    <span className="text-[10px] text-slate-400 font-mono">
+                      Download
+                    </span>
                   </button>
 
                   <button
                     type="button"
                     onClick={() => {
-                      if (confirm('Apakah Anda ingin mereset seluruh database lokal Anda ke data default awal?')) {
+                      if (
+                        confirm(
+                          "Apakah Anda ingin mereset seluruh database lokal Anda ke data default awal?"
+                        )
+                      ) {
                         localDb.resetAll();
                         setBpLogs(localDb.getBPLogs());
                         setWeightLogs(localDb.getWeightLogs());
                         setProfile(localDb.getProfile());
                         setProfileNameInput(localDb.getProfile().full_name);
-                        showSuccessAlert('Database lokal berhasil dibersihkan!');
+                        showSuccessAlert(
+                          "Database lokal berhasil dibersihkan!"
+                        );
                       }
                     }}
                     className="w-full p-3 border border-rose-200 bg-rose-50 hover:bg-rose-100 text-rose-700 rounded-xl text-xs font-bold transition-all flex items-center justify-between active:scale-98 cursor-pointer"
                   >
                     <span className="flex items-center gap-2">
-                      <RefreshCw className="h-4 w-4 text-rose-500" /> Reset Semua Log Lokal
+                      <RefreshCw className="h-4 w-4 text-rose-500" /> Reset
+                      Semua Log Lokal
                     </span>
-                    <span className="text-[10px] text-rose-400 font-mono">Reset</span>
+                    <span className="text-[10px] text-rose-400 font-mono">
+                      Reset
+                    </span>
                   </button>
                 </div>
               </div>
@@ -2142,13 +2568,17 @@ export default function App() {
                   Ekspor & Impor Data (CSV)
                 </h3>
                 <p className="text-[11px] text-slate-500 dark:text-slate-400 mb-4 leading-normal">
-                  Ekspor data Anda ke format CSV standar untuk dianalisis di Excel atau Google Sheets, atau impor data dari file CSV yang sudah ada.
+                  Ekspor data Anda ke format CSV standar untuk dianalisis di
+                  Excel atau Google Sheets, atau impor data dari file CSV yang
+                  sudah ada.
                 </p>
 
                 <div className="space-y-4">
                   {/* Export Sub-Section */}
                   <div>
-                    <h4 className="text-[10px] font-bold text-slate-400 tracking-wider mb-2">Ekspor Riwayat</h4>
+                    <h4 className="text-[10px] font-bold text-slate-400 tracking-wider mb-2">
+                      Ekspor Riwayat
+                    </h4>
                     <div className="grid grid-cols-2 gap-2">
                       <button
                         type="button"
@@ -2171,7 +2601,9 @@ export default function App() {
 
                   {/* Import Sub-Section */}
                   <div>
-                    <h4 className="text-[10px] font-bold text-slate-400 tracking-wider mb-2">Impor dari CSV</h4>
+                    <h4 className="text-[10px] font-bold text-slate-400 tracking-wider mb-2">
+                      Impor dari CSV
+                    </h4>
                     <div
                       onDragOver={(e) => {
                         e.preventDefault();
@@ -2186,18 +2618,20 @@ export default function App() {
                         setIsDragging(false);
                         const file = e.dataTransfer.files?.[0];
                         if (file) {
-                          if (file.name.endsWith('.csv')) {
+                          if (file.name.endsWith(".csv")) {
                             handleImportCSVFile(file);
                           } else {
-                            alert('Hanya mendukung file format .csv');
+                            alert("Hanya mendukung file format .csv");
                           }
                         }
                       }}
-                      onClick={() => document.getElementById('csv-file-input')?.click()}
+                      onClick={() =>
+                        document.getElementById("csv-file-input")?.click()
+                      }
                       className={`border-2 border-dashed rounded-2xl p-5 flex flex-col items-center justify-center text-center cursor-pointer transition-all ${
                         isDragging
-                          ? 'border-indigo-500 bg-indigo-50/40 text-indigo-700'
-                          : 'border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900/50 hover:bg-slate-100 dark:bg-slate-800 hover:border-slate-300 text-slate-500 dark:text-slate-400'
+                          ? "border-indigo-500 bg-indigo-50/40 text-indigo-700"
+                          : "border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900/50 hover:bg-slate-100 dark:bg-slate-800 hover:border-slate-300 text-slate-500 dark:text-slate-400"
                       }`}
                     >
                       <input
@@ -2212,7 +2646,13 @@ export default function App() {
                           }
                         }}
                       />
-                      <Upload className={`h-6 w-6 mb-2 ${isDragging ? 'text-indigo-600 animate-bounce' : 'text-slate-400'}`} />
+                      <Upload
+                        className={`h-6 w-6 mb-2 ${
+                          isDragging
+                            ? "text-indigo-600 animate-bounce"
+                            : "text-slate-400"
+                        }`}
+                      />
                       <p className="text-xs font-bold">
                         Seret & letakkan file .csv di sini
                       </p>
@@ -2220,8 +2660,12 @@ export default function App() {
                         atau klik untuk memilih file dari komputer Anda
                       </p>
                       <div className="mt-3 p-1.5 bg-slate-100 dark:bg-slate-800 rounded-lg text-[9px] text-slate-400 text-left font-mono w-full">
-                        <p className="font-bold mb-0.5 text-center">Format kolom didukung:</p>
-                        <p>• Tensi: Tanggal, Sistolik, Diastolik, Nadi, Catatan</p>
+                        <p className="font-bold mb-0.5 text-center">
+                          Format kolom didukung:
+                        </p>
+                        <p>
+                          • Tensi: Tanggal, Sistolik, Diastolik, Nadi, Catatan
+                        </p>
                         <p>• Berat: Tanggal, Berat Badan, Catatan</p>
                       </div>
                     </div>
@@ -2236,13 +2680,13 @@ export default function App() {
                     <Database className="h-4 w-4 text-indigo-600" />
                     Skema SQL Supabase
                   </h3>
-                  
+
                   {/* Copy button */}
                   <button
                     type="button"
                     onClick={() => {
                       navigator.clipboard.writeText(SUPABASE_SQL_SETUP);
-                      showSuccessAlert('Skema SQL disalin!');
+                      showSuccessAlert("Skema SQL disalin!");
                     }}
                     className="text-[10px] bg-indigo-50 text-indigo-700 border border-indigo-100 font-bold px-2.5 py-1 rounded-md hover:bg-indigo-100 transition-all flex items-center gap-1 cursor-pointer"
                   >
@@ -2251,7 +2695,9 @@ export default function App() {
                 </div>
 
                 <p className="text-[11px] text-slate-500 dark:text-slate-400 leading-normal mb-3">
-                  Salin kode di bawah ini lalu jalankan di menu <strong>SQL Editor</strong> di dalam dasbor proyek Supabase Anda untuk membuat tabel otomatis dengan izin RLS yang aman:
+                  Salin kode di bawah ini lalu jalankan di menu{" "}
+                  <strong>SQL Editor</strong> di dalam dasbor proyek Supabase
+                  Anda untuk membuat tabel otomatis dengan izin RLS yang aman:
                 </p>
 
                 <div className="relative">
@@ -2263,12 +2709,9 @@ export default function App() {
                   />
                 </div>
               </div>
-
             </div>
-
           </div>
         )}
-
       </main>
 
       {/* Supabase Connection Setup Overlay Modal */}
@@ -2282,7 +2725,6 @@ export default function App() {
         onSave={handleSaveConfig}
         onReset={handleResetConfig}
       />
-
     </div>
   );
 }
