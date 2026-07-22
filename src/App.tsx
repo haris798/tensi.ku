@@ -43,7 +43,6 @@ import BloodPressureChart from './components/BloodPressureChart';
 import MonthlyTrendPieChart from './components/MonthlyTrendPieChart';
 import WeightChart from './components/WeightChart';
 import SupabaseConfigModal from './components/SupabaseConfigModal';
-import AuthScreen from './components/AuthScreen';
 
 // Helper function to generate high-quality personalized health tips locally
 const generateLocalTip = (bp: BloodPressureLog | undefined, weight: WeightLog | undefined): { tip: string; focus: string } => {
@@ -112,18 +111,9 @@ export default function App() {
   const [isDemo, setIsDemo] = useState(false);
 
   const [session, setSession] = useState<any>(null);
-  const [profile, setProfile] = useState<UserProfile | null>(() => {
-    const lastUserId = localStorage.getItem('bp_last_user_id');
-    return lastUserId ? syncEngine.getCachedProfile(lastUserId) : null;
-  });
-  const [bpLogs, setBpLogs] = useState<BloodPressureLog[]>(() => {
-    const lastUserId = localStorage.getItem('bp_last_user_id');
-    return lastUserId ? syncEngine.getCachedBP(lastUserId) : [];
-  });
-  const [weightLogs, setWeightLogs] = useState<WeightLog[]>(() => {
-    const lastUserId = localStorage.getItem('bp_last_user_id');
-    return lastUserId ? syncEngine.getCachedWeight(lastUserId) : [];
-  });
+  const [profile, setProfile] = useState<UserProfile>(() => localDb.getProfile());
+  const [bpLogs, setBpLogs] = useState<BloodPressureLog[]>(() => localDb.getBPLogs());
+  const [weightLogs, setWeightLogs] = useState<WeightLog[]>(() => localDb.getWeightLogs());
   
   // UI Controls
   const [isConfigOpen, setIsConfigOpen] = useState(false);
@@ -278,75 +268,16 @@ export default function App() {
     }
   }, [isDark]);
 
-  // Handle active session and auth changes when not in demo mode
+  // Handle active session and background sync when online
   useEffect(() => {
-    if (isDemo || !supabase) {
-      setSession(null);
-      setProfile(localDb.getProfile());
-      return;
+    // Initial sync check when online
+    if (navigator.onLine) {
+      handleBackgroundSync();
     }
 
-    // Get initial session
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session);
-      if (session?.user?.id) {
-        const userId = session.user.id;
-        syncEngine.setLastUserId(userId);
-        
-        // Load local cache synchronously immediately
-        const cachedProfile = syncEngine.getCachedProfile(userId);
-        const cachedBP = syncEngine.getCachedBP(userId);
-        const cachedWeight = syncEngine.getCachedWeight(userId);
-
-        setProfile(cachedProfile);
-        if (cachedProfile) {
-          setProfileNameInput(cachedProfile.full_name || 'Pengguna');
-          setTargetWeightInput(cachedProfile.target_weight ? String(cachedProfile.target_weight) : '');
-          setHeightInput(cachedProfile.height ? String(cachedProfile.height) : '');
-        }
-        setBpLogs(cachedBP);
-        setWeightLogs(cachedWeight);
-      }
-    });
-
-    // Listen for auth state changes
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      setSession(session);
-      if (session?.user?.id) {
-        const userId = session.user.id;
-        syncEngine.setLastUserId(userId);
-
-        // Load local cache synchronously immediately
-        const cachedProfile = syncEngine.getCachedProfile(userId);
-        const cachedBP = syncEngine.getCachedBP(userId);
-        const cachedWeight = syncEngine.getCachedWeight(userId);
-
-        setProfile(cachedProfile);
-        if (cachedProfile) {
-          setProfileNameInput(cachedProfile.full_name || 'Pengguna');
-          setTargetWeightInput(cachedProfile.target_weight ? String(cachedProfile.target_weight) : '');
-          setHeightInput(cachedProfile.height ? String(cachedProfile.height) : '');
-        }
-        setBpLogs(cachedBP);
-        setWeightLogs(cachedWeight);
-      } else if (!session) {
-        syncEngine.setLastUserId(null);
-      }
-    });
-
-    return () => subscription.unsubscribe();
-  }, [isDemo, creds]);
-
-  // Fetch data on session change or mode change
-  useEffect(() => {
-    fetchData();
-  }, [session, isDemo]);
-
-  // Sync online/offline statuses
-  useEffect(() => {
     const handleOnline = () => {
       setIsOffline(false);
-      fetchData(); // Trigger full sync when coming online
+      handleBackgroundSync();
     };
     const handleOffline = () => {
       setIsOffline(true);
@@ -359,79 +290,51 @@ export default function App() {
       window.removeEventListener('online', handleOnline);
       window.removeEventListener('offline', handleOffline);
     };
-  }, [session, isDemo]);
+  }, [creds]);
 
-  const fetchData = async () => {
+  const handleBackgroundSync = async () => {
     setDatabaseError(null);
+    if (!navigator.onLine || !supabase) {
+      return;
+    }
 
+    setIsSyncing(true);
     try {
-      if (isDemo) {
-        // Load offline mock/local data
-        const bp = localDb.getBPLogs();
-        const wl = localDb.getWeightLogs();
-        const prof = localDb.getProfile();
-        
-        setBpLogs(bp);
-        setWeightLogs(wl);
-        setProfile(prof);
-        setProfileNameInput(prof.full_name);
-        setTargetWeightInput(prof.target_weight ? String(prof.target_weight) : '');
-        setHeightInput(prof.height ? String(prof.height) : '');
-      } else {
-        if (!session) {
-          return;
+      let currentSession = (await supabase.auth.getSession()).data.session;
+      if (!currentSession) {
+        try {
+          const { data } = await supabase.auth.signInAnonymously();
+          currentSession = data.session;
+        } catch {
+          // If anonymous sign in is disabled or fails, proceed without blocking
         }
+      }
 
-        const user = session.user;
-        const userId = user.id;
+      if (currentSession?.user?.id) {
+        const userId = currentSession.user.id;
+        syncEngine.setLastUserId(userId);
 
-        // Check if we have no cached data at all. If so, show initial load spinner
-        const cachedBP = syncEngine.getCachedBP(userId);
-        const cachedWeight = syncEngine.getCachedWeight(userId);
-        if (cachedBP.length === 0 && cachedWeight.length === 0) {
-          setIsLoading(true);
-        }
-
-        setIsSyncing(true);
-
-        // 1. Process sync queue (push offline additions/deletions)
+        // 1. Process offline sync queue
         await syncEngine.processQueue(userId);
 
-        // 2. Fetch fresh data from Supabase and update local cache
+        // 2. Fetch remote records from Supabase
         const fresh = await syncEngine.fetchAndCacheAll(userId);
-
-        // 3. Update React states with fresh synced data
-        setProfile(fresh.profile);
+        if (fresh.bp && fresh.bp.length > 0) {
+          setBpLogs(fresh.bp);
+        }
+        if (fresh.weight && fresh.weight.length > 0) {
+          setWeightLogs(fresh.weight);
+        }
         if (fresh.profile) {
+          setProfile(fresh.profile);
           setProfileNameInput(fresh.profile.full_name || 'Pengguna');
           setTargetWeightInput(fresh.profile.target_weight ? String(fresh.profile.target_weight) : '');
           setHeightInput(fresh.profile.height ? String(fresh.profile.height) : '');
         }
-        setBpLogs(fresh.bp);
-        setWeightLogs(fresh.weight);
       }
     } catch (err: any) {
-      console.error('Error fetching data:', err);
-      // Check if it's a network error. In local-first, network errors are handled gracefully.
-      const isNetworkError = 
-        !navigator.onLine || 
-        err.message?.includes('Failed to fetch') || 
-        err.message?.includes('NetworkError') || 
-        err.message?.includes('network') ||
-        err.status === 0;
-
-      if (isNetworkError) {
-        console.log('App running in offline/cached mode.');
-        // Don't show blocking database errors for simple connection drops
-      } else if (err.message && err.message.includes('relation') && err.message.includes('does not exist')) {
-        setDatabaseError(
-          'Tabel database belum dibuat di Supabase Anda. Silakan klik tombol "Pengaturan database" (ikon database) di kanan atas, salin kode SQL skema, dan jalankan di SQL Editor Supabase Anda!'
-        );
-      } else {
-        setDatabaseError(err.message || 'Gagal memuat data dari Supabase.');
-      }
+      console.warn('Background sync message:', err);
     } finally {
-      setIsLoading(false);
       setIsSyncing(false);
     }
   };
@@ -445,30 +348,13 @@ export default function App() {
     const parsedHeight = heightInput.trim() ? parseFloat(heightInput) : null;
 
     try {
-      if (isDemo) {
-        const updated = localDb.saveProfile(profileNameInput, parsedTargetWeight, parsedHeight);
-        setProfile(updated);
-        showSuccessAlert('Profil berhasil diperbarui!');
-        setIsEditingProfile(false);
-      } else {
-        if (!session?.user) return;
-        const userId = session.user.id;
+      const updated = localDb.saveProfile(profileNameInput.trim(), parsedTargetWeight, parsedHeight);
+      setProfile(updated);
+      showSuccessAlert('Profil berhasil diperbarui!');
+      setIsEditingProfile(false);
 
-        // 1. Update local cache immediately
-        const updated = syncEngine.localUpdateProfile(userId, profileNameInput.trim(), parsedTargetWeight, parsedHeight);
-        setProfile(updated);
-        showSuccessAlert('Profil berhasil diperbarui secara lokal!');
-        setIsEditingProfile(false);
-
-        // 2. Trigger background sync
-        syncEngine.processQueue(userId).then((res) => {
-          if (res.success) {
-            // Keep state updated in case of remote changes
-            syncEngine.fetchAndCacheAll(userId).then(fresh => {
-              setProfile(fresh.profile);
-            }).catch(console.error);
-          }
-        });
+      if (navigator.onLine && supabase) {
+        handleBackgroundSync();
       }
     } catch (err: any) {
       console.error(err);
@@ -489,30 +375,10 @@ export default function App() {
     }
 
     try {
-      if (isDemo) {
-        localDb.saveBPLog(sys, dia, pulse, new Date(bpDate).toISOString(), bpNotes);
-        setBpLogs(localDb.getBPLogs());
-        showSuccessAlert('Catatan tensi berhasil ditambahkan secara lokal!');
-      } else {
-        if (!session?.user) return;
-        const userId = session.user.id;
+      localDb.saveBPLog(sys, dia, pulse, new Date(bpDate).toISOString(), bpNotes);
+      setBpLogs(localDb.getBPLogs());
+      showSuccessAlert('Catatan tensi berhasil disimpan!');
 
-        // 1. Save locally FIRST (instant UI update)
-        syncEngine.localAddBP(userId, sys, dia, pulse, new Date(bpDate).toISOString(), bpNotes);
-        setBpLogs(syncEngine.getCachedBP(userId)); // Immediate update!
-        showSuccessAlert('Catatan tensi berhasil ditambahkan secara lokal!');
-
-        // 2. Trigger background sync
-        syncEngine.processQueue(userId).then((res) => {
-          if (res.success) {
-            syncEngine.fetchAndCacheAll(userId).then(fresh => {
-              setBpLogs(fresh.bp);
-            }).catch(console.error);
-          }
-        });
-      }
-
-      // Reset input fields, notes, and refresh date
       setSysInput('');
       setDiaInput('');
       setPulseInput('');
@@ -520,6 +386,10 @@ export default function App() {
       const now = new Date();
       now.setMinutes(now.getMinutes() - now.getTimezoneOffset());
       setBpDate(now.toISOString().slice(0, 16));
+
+      if (navigator.onLine && supabase) {
+        handleBackgroundSync();
+      }
     } catch (err: any) {
       console.error(err);
       alert('Gagal menyimpan catatan: ' + err.message);
@@ -537,34 +407,19 @@ export default function App() {
     }
 
     try {
-      if (isDemo) {
-        localDb.saveWeightLog(w, new Date(weightDate).toISOString(), weightNotes);
-        setWeightLogs(localDb.getWeightLogs());
-        showSuccessAlert('Catatan berat badan ditambahkan secara lokal!');
-      } else {
-        if (!session?.user) return;
-        const userId = session.user.id;
-
-        // 1. Save locally FIRST (instant UI update)
-        syncEngine.localAddWeight(userId, w, new Date(weightDate).toISOString(), weightNotes);
-        setWeightLogs(syncEngine.getCachedWeight(userId)); // Immediate update!
-        showSuccessAlert('Catatan berat badan berhasil ditambahkan secara lokal!');
-
-        // 2. Trigger background sync
-        syncEngine.processQueue(userId).then((res) => {
-          if (res.success) {
-            syncEngine.fetchAndCacheAll(userId).then(fresh => {
-              setWeightLogs(fresh.weight);
-            }).catch(console.error);
-          }
-        });
-      }
+      localDb.saveWeightLog(w, new Date(weightDate).toISOString(), weightNotes);
+      setWeightLogs(localDb.getWeightLogs());
+      showSuccessAlert('Catatan berat badan berhasil disimpan!');
 
       setWeightInput('');
       setWeightNotes('');
       const now = new Date();
       now.setMinutes(now.getMinutes() - now.getTimezoneOffset());
       setWeightDate(now.toISOString().slice(0, 16));
+
+      if (navigator.onLine && supabase) {
+        handleBackgroundSync();
+      }
     } catch (err: any) {
       console.error(err);
       alert('Gagal menyimpan berat badan: ' + err.message);
@@ -574,27 +429,12 @@ export default function App() {
   // Delete Log
   const handleDeleteBP = async (id: string) => {
     try {
-      if (isDemo) {
-        localDb.deleteBPLog(id);
-        setBpLogs(localDb.getBPLogs());
-        showSuccessAlert('Catatan tensi lokal berhasil dihapus.');
-      } else {
-        if (!session?.user) return;
-        const userId = session.user.id;
+      localDb.deleteBPLog(id);
+      setBpLogs(localDb.getBPLogs());
+      showSuccessAlert('Catatan tensi berhasil dihapus.');
 
-        // 1. Delete locally FIRST (instant UI update)
-        syncEngine.localDeleteBP(userId, id);
-        setBpLogs(syncEngine.getCachedBP(userId)); // Immediate update!
-        showSuccessAlert('Catatan tensi berhasil dihapus secara lokal.');
-
-        // 2. Trigger background sync
-        syncEngine.processQueue(userId).then((res) => {
-          if (res.success) {
-            syncEngine.fetchAndCacheAll(userId).then(fresh => {
-              setBpLogs(fresh.bp);
-            }).catch(console.error);
-          }
-        });
+      if (navigator.onLine && supabase) {
+        handleBackgroundSync();
       }
     } catch (err: any) {
       console.error(err);
@@ -604,27 +444,12 @@ export default function App() {
 
   const handleDeleteWeight = async (id: string) => {
     try {
-      if (isDemo) {
-        localDb.deleteWeightLog(id);
-        setWeightLogs(localDb.getWeightLogs());
-        showSuccessAlert('Catatan berat badan lokal berhasil dihapus.');
-      } else {
-        if (!session?.user) return;
-        const userId = session.user.id;
+      localDb.deleteWeightLog(id);
+      setWeightLogs(localDb.getWeightLogs());
+      showSuccessAlert('Catatan berat badan berhasil dihapus.');
 
-        // 1. Delete locally FIRST (instant UI update)
-        syncEngine.localDeleteWeight(userId, id);
-        setWeightLogs(syncEngine.getCachedWeight(userId)); // Immediate update!
-        showSuccessAlert('Catatan berat badan berhasil dihapus secara lokal.');
-
-        // 2. Trigger background sync
-        syncEngine.processQueue(userId).then((res) => {
-          if (res.success) {
-            syncEngine.fetchAndCacheAll(userId).then(fresh => {
-              setWeightLogs(fresh.weight);
-            }).catch(console.error);
-          }
-        });
+      if (navigator.onLine && supabase) {
+        handleBackgroundSync();
       }
     } catch (err: any) {
       console.error(err);
@@ -940,48 +765,19 @@ export default function App() {
 
       if (confirm(`Apakah Anda yakin ingin mengimpor ${totalBp} catatan tensi dan ${totalWeight} catatan berat badan dari CSV?`)) {
         try {
-          if (isDemo) {
-            // Import locally
-            result.bp.forEach(item => {
-              localDb.saveBPLog(item.systolic, item.diastolic, item.pulse, item.logged_at, item.notes);
-            });
-            result.weight.forEach(item => {
-              localDb.saveWeightLog(item.weight, item.logged_at, item.notes);
-            });
-            
-            setBpLogs(localDb.getBPLogs());
-            setWeightLogs(localDb.getWeightLogs());
-            showSuccessAlert(`Berhasil mengimpor ${totalBp} rekam tensi & ${totalWeight} rekam berat badan secara lokal!`);
-          } else {
-            if (!session?.user) {
-              alert('Harap login terlebih dahulu untuk menyimpan data di cloud.');
-              return;
-            }
-            const userId = session.user.id;
+          result.bp.forEach(item => {
+            localDb.saveBPLog(item.systolic, item.diastolic, item.pulse, item.logged_at, item.notes);
+          });
+          result.weight.forEach(item => {
+            localDb.saveWeightLog(item.weight, item.logged_at, item.notes);
+          });
+             
+          setBpLogs(localDb.getBPLogs());
+          setWeightLogs(localDb.getWeightLogs());
+          showSuccessAlert(`Berhasil mengimpor ${totalBp} rekam tensi & ${totalWeight} rekam berat badan!`);
 
-            // Save to local cache & sync queue
-            result.bp.forEach(item => {
-              syncEngine.localAddBP(userId, item.systolic, item.diastolic, item.pulse, item.logged_at, item.notes);
-            });
-            result.weight.forEach(item => {
-              syncEngine.localAddWeight(userId, item.weight, item.logged_at, item.notes);
-            });
-
-            // Update instant UI states
-            setBpLogs(syncEngine.getCachedBP(userId));
-            setWeightLogs(syncEngine.getCachedWeight(userId));
-
-            showSuccessAlert(`Berhasil mengimpor ${totalBp} rekam tensi & ${totalWeight} rekam berat badan. Sinkronisasi latar belakang berjalan!`);
-
-            // Trigger sync
-            syncEngine.processQueue(userId).then((res) => {
-              if (res.success) {
-                syncEngine.fetchAndCacheAll(userId).then(fresh => {
-                  setBpLogs(fresh.bp);
-                  setWeightLogs(fresh.weight);
-                }).catch(console.error);
-              }
-            });
+          if (navigator.onLine && supabase) {
+            handleBackgroundSync();
           }
         } catch (err: any) {
           console.error('Gagal mengimpor CSV:', err);
@@ -1037,35 +833,13 @@ export default function App() {
       const q = searchQuery.toLowerCase();
       combined = combined.filter(item => 
         item.notes.toLowerCase().includes(q) || 
-        item.valText.toLowerCase().includes(q) ||
+        item.valText.toLowerCase().includes(q) || 
         item.date.toLocaleDateString().includes(q)
       );
     }
 
     return combined;
   };
-
-  // If in Supabase Cloud mode AND session is null, render Auth Screen
-  if (!isDemo && !session) {
-    return (
-      <>
-        <AuthScreen 
-          onSuccess={() => fetchData()} 
-          onOpenSettings={() => setIsConfigOpen(true)} 
-        />
-        <SupabaseConfigModal 
-          isOpen={isConfigOpen}
-          onClose={() => setIsConfigOpen(false)}
-          url={creds.url}
-          anonKey={creds.anonKey}
-          isEnv={creds.isEnv}
-          isDemo={isDemo}
-          onSave={handleSaveConfig}
-          onReset={handleResetConfig}
-        />
-      </>
-    );
-  }
 
   const logsToShow = filteredLogsList();
 
@@ -1977,38 +1751,36 @@ export default function App() {
                   </button>
                 </div>
 
-                {/* Local Backup Mode (Only in local mode) */}
-                {isDemo && (
-                  <div className="flex items-center gap-2">
-                    <button
-                      type="button"
-                      onClick={exportLocalData}
-                      title="Unduh Cadangan JSON Lokal"
-                      className="p-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl hover:bg-slate-100 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 text-xs font-bold transition-all flex items-center gap-1.5 active:scale-95 shrink-0 cursor-pointer"
-                    >
-                      <Download className="h-4 w-4" />
-                      <span className="hidden sm:inline">Ekspor JSON</span>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        if (confirm('Apakah Anda ingin mereset basis data lokal Anda ke data default awal?')) {
-                          localDb.resetAll();
-                          setBpLogs(localDb.getBPLogs());
-                          setWeightLogs(localDb.getWeightLogs());
-                          setProfile(localDb.getProfile());
-                          setProfileNameInput(localDb.getProfile().full_name);
-                          showSuccessAlert('Database lokal berhasil di-reset.');
-                        }
-                      }}
-                      title="Reset Database Lokal"
-                      className="p-2 border border-rose-200 dark:border-rose-900/40 bg-rose-50 dark:bg-rose-950/20 text-rose-600 dark:text-rose-400 hover:bg-rose-100 dark:hover:bg-rose-950/30 rounded-xl text-xs transition-all flex items-center gap-1 shrink-0 cursor-pointer"
-                    >
-                      <RefreshCw className="h-4 w-4" />
-                      <span className="hidden sm:inline">Reset</span>
-                    </button>
-                  </div>
-                )}
+                {/* Local Backup Actions */}
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={exportLocalData}
+                    title="Unduh Cadangan JSON Lokal"
+                    className="p-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 text-xs font-bold transition-all flex items-center gap-1.5 active:scale-95 shrink-0 cursor-pointer"
+                  >
+                    <Download className="h-4 w-4" />
+                    <span className="hidden sm:inline">Ekspor JSON</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (confirm('Apakah Anda ingin mereset basis data lokal Anda ke data default awal?')) {
+                        localDb.resetAll();
+                        setBpLogs(localDb.getBPLogs());
+                        setWeightLogs(localDb.getWeightLogs());
+                        setProfile(localDb.getProfile());
+                        setProfileNameInput(localDb.getProfile().full_name);
+                        showSuccessAlert('Database lokal berhasil di-reset.');
+                      }
+                    }}
+                    title="Reset Database Lokal"
+                    className="p-2 border border-rose-200 dark:border-rose-900/40 bg-rose-50 dark:bg-rose-950/20 text-rose-600 dark:text-rose-400 hover:bg-rose-100 dark:hover:bg-rose-950/30 rounded-xl text-xs transition-all flex items-center gap-1 shrink-0 cursor-pointer"
+                  >
+                    <RefreshCw className="h-4 w-4" />
+                    <span className="hidden sm:inline">Reset</span>
+                  </button>
+                </div>
               </div>
             </div>
 
@@ -2159,25 +1931,25 @@ export default function App() {
                 </h3>
                 
                 <form onSubmit={handleUpdateProfile} className="space-y-4">
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div className="grid grid-cols-3 gap-2 sm:gap-4">
                     <div>
-                      <label className="block text-[11px] font-bold text-slate-400 dark:text-slate-500 dark:text-slate-400 tracking-wider mb-1.5">
-                        Nama Lengkap Anda
+                      <label className="block text-[10px] sm:text-[11px] font-bold text-slate-400 dark:text-slate-400 tracking-wider mb-1.5 truncate">
+                        Nama Lengkap
                       </label>
                       <input
                         type="text"
                         value={profileNameInput}
                         onChange={(e) => setProfileNameInput(e.target.value)}
-                        className="w-full rounded-xl border border-slate-200 dark:border-slate-700 px-3.5 py-2.5 text-xs outline-none bg-slate-50 dark:bg-slate-900 focus:bg-white dark:focus:bg-slate-800 dark:focus:bg-slate-800 focus:border-indigo-500 dark:focus:border-indigo-400 focus:ring-4 focus:ring-indigo-100/30 dark:focus:ring-indigo-900/30 transition-all font-semibold text-slate-700 dark:text-slate-200"
-                        placeholder="Nama Lengkap"
+                        className="w-full rounded-xl border border-slate-200 dark:border-slate-700 px-2.5 sm:px-3.5 py-2.5 text-xs outline-none bg-slate-50 dark:bg-slate-900 focus:bg-white dark:focus:bg-slate-800 focus:border-indigo-500 dark:focus:border-indigo-400 focus:ring-4 focus:ring-indigo-100/30 dark:focus:ring-indigo-900/30 transition-all font-semibold text-slate-700 dark:text-slate-200"
+                        placeholder="Nama"
                         required
                         maxLength={30}
                       />
                     </div>
 
                     <div>
-                      <label className="block text-[11px] font-bold text-slate-400 dark:text-slate-500 dark:text-slate-400 tracking-wider mb-1.5">
-                        Tinggi Badan (cm)
+                      <label className="block text-[10px] sm:text-[11px] font-bold text-slate-400 dark:text-slate-400 tracking-wider mb-1.5 truncate">
+                        Tinggi (cm)
                       </label>
                       <input
                         type="number"
@@ -2186,14 +1958,14 @@ export default function App() {
                         max="250"
                         value={heightInput}
                         onChange={(e) => setHeightInput(e.target.value)}
-                        className="w-full rounded-xl border border-slate-200 dark:border-slate-700 px-3.5 py-2.5 text-xs outline-none bg-slate-50 dark:bg-slate-900 focus:bg-white dark:focus:bg-slate-800 dark:focus:bg-slate-800 focus:border-indigo-500 dark:focus:border-indigo-400 focus:ring-4 focus:ring-indigo-100/30 dark:focus:ring-indigo-900/30 transition-all font-semibold text-slate-700 dark:text-slate-200"
-                        placeholder="Contoh: 170"
+                        className="w-full rounded-xl border border-slate-200 dark:border-slate-700 px-2.5 sm:px-3.5 py-2.5 text-xs outline-none bg-slate-50 dark:bg-slate-900 focus:bg-white dark:focus:bg-slate-800 focus:border-indigo-500 dark:focus:border-indigo-400 focus:ring-4 focus:ring-indigo-100/30 dark:focus:ring-indigo-900/30 transition-all font-semibold text-slate-700 dark:text-slate-200"
+                        placeholder="170"
                       />
                     </div>
 
                     <div>
-                      <label className="block text-[11px] font-bold text-slate-400 dark:text-slate-500 dark:text-slate-400 tracking-wider mb-1.5">
-                        Target Berat Badan Anda (kg)
+                      <label className="block text-[10px] sm:text-[11px] font-bold text-slate-400 dark:text-slate-400 tracking-wider mb-1.5 truncate">
+                        Target BB (kg)
                       </label>
                       <input
                         type="number"
@@ -2202,8 +1974,8 @@ export default function App() {
                         max="300"
                         value={targetWeightInput}
                         onChange={(e) => setTargetWeightInput(e.target.value)}
-                        className="w-full rounded-xl border border-slate-200 dark:border-slate-700 px-3.5 py-2.5 text-xs outline-none bg-slate-50 dark:bg-slate-900 focus:bg-white dark:focus:bg-slate-800 dark:focus:bg-slate-800 focus:border-indigo-500 dark:focus:border-indigo-400 focus:ring-4 focus:ring-indigo-100/30 dark:focus:ring-indigo-900/30 transition-all font-semibold text-slate-700 dark:text-slate-200"
-                        placeholder="Contoh: 68.0"
+                        className="w-full rounded-xl border border-slate-200 dark:border-slate-700 px-2.5 sm:px-3.5 py-2.5 text-xs outline-none bg-slate-50 dark:bg-slate-900 focus:bg-white dark:focus:bg-slate-800 focus:border-indigo-500 dark:focus:border-indigo-400 focus:ring-4 focus:ring-indigo-100/30 dark:focus:ring-indigo-900/30 transition-all font-semibold text-slate-700 dark:text-slate-200"
+                        placeholder="68.0"
                       />
                     </div>
                   </div>
