@@ -1,4 +1,4 @@
-import { BloodPressureLog, WeightLog, UserProfile } from '../types';
+import { BloodPressureLog, WeightLog, UserProfile, AITipLog } from '../types';
 
 // Pre-populate with realistic mock health records for an immersive first impression
 const DUMMY_BP_LOGS: BloodPressureLog[] = [
@@ -122,7 +122,8 @@ const KEYS = {
   BP: 'local_bp_logs_v1',
   WEIGHT: 'local_weight_logs_v1',
   PROFILE: 'local_profile_v1',
-  HAS_SEEDED: 'local_has_seeded_v1'
+  HAS_SEEDED: 'local_has_seeded_v1',
+  AI_TIPS: 'local_ai_tips_v1'
 };
 
 export function initLocalStorage() {
@@ -209,6 +210,26 @@ export const localDb = {
     profile.updated_at = new Date().toISOString();
     localStorage.setItem(KEYS.PROFILE, JSON.stringify(profile));
     return profile;
+  },
+
+  getAITips(): AITipLog[] {
+    const data = localStorage.getItem(KEYS.AI_TIPS);
+    return data ? JSON.parse(data) : [];
+  },
+
+  saveAITip(tip: string, focus: string): AITipLog {
+    const logs = this.getAITips();
+    const newLog: AITipLog = {
+      id: `tip-${Math.random().toString(36).substr(2, 9)}`,
+      tip,
+      focus,
+      created_at: new Date().toISOString()
+    };
+    // Keep only the last 30 tips to prevent unbounded growth
+    logs.unshift(newLog);
+    if (logs.length > 30) logs.pop();
+    localStorage.setItem(KEYS.AI_TIPS, JSON.stringify(logs));
+    return newLog;
   },
 
   resetAll(): void {

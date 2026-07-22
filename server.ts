@@ -96,9 +96,9 @@ ${context}`,
     const result = JSON.parse(text.trim());
     res.json(result);
   } catch (error: any) {
-    console.error("Gemini Health Tips Error:", error);
-    res.status(500).json({ 
-      error: "Gagal menghasilkan tips kesehatan AI: " + (error.message || error) 
+    console.warn("Gemini Health Tips Warning (Fallback triggered):", error?.message || error);
+    res.status(503).json({ 
+      error: "Gagal menghasilkan tips kesehatan AI, menggunakan fallback lokal." 
     });
   }
 });

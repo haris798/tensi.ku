@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { supabase, getSavedCredentials, updateSupabaseClient, clearSavedCredentials, SUPABASE_SQL_SETUP } from './lib/supabase';
 import { localDb } from './lib/localDb';
-import { BloodPressureLog, WeightLog, UserProfile, BPCategory } from './types';
+import { BloodPressureLog, WeightLog, UserProfile, BPCategory, AITipLog } from './types';
 import { syncEngine } from './lib/syncEngine';
 import { exportBPToCSV, exportWeightToCSV, parseCSV } from './lib/csvHelper';
 import { classifyBP } from './components/MonthlyTrendPieChart';
@@ -185,10 +185,8 @@ export default function App() {
   const [isDark, setIsDark] = useState(() => localStorage.getItem('bp_dark_mode') === 'true');
 
   // Health tips states
-  const [healthTip, setHealthTip] = useState<{ tip: string; focus: string } | null>(() => {
-    const saved = localStorage.getItem('bp_health_tip');
-    return saved ? JSON.parse(saved) : null;
-  });
+  const [aiTipsHistory, setAiTipsHistory] = useState<AITipLog[]>(() => localDb.getAITips());
+  const healthTip = aiTipsHistory.length > 0 ? aiTipsHistory[0] : null;
   const [isGeneratingTip, setIsGeneratingTip] = useState(false);
   const [tipError, setTipError] = useState<string | null>(null);
 
@@ -205,13 +203,20 @@ export default function App() {
       return;
     }
 
-    // If not forced and we already have a saved tip, don't generate to save limits/prevent flashing
-    if (!force && healthTip) return;
+    // Check if we already have a tip for today to avoid spamming
+    const todayStr = new Date().toLocaleDateString();
+    const hasTipToday = aiTipsHistory.some(t => new Date(t.created_at).toLocaleDateString() === todayStr);
+
+    if (!force && hasTipToday) return;
 
     setIsGeneratingTip(true);
     setTipError(null);
 
     try {
+      if (!navigator.onLine) {
+        throw new Error('Tidak ada koneksi internet');
+      }
+
       const response = await fetch('/api/gemini/health-tips', {
         method: 'POST',
         headers: {
@@ -239,20 +244,14 @@ export default function App() {
       }
 
       const data = await response.json();
-      setHealthTip(data);
-      localStorage.setItem('bp_health_tip', JSON.stringify(data));
+      const newTip = localDb.saveAITip(data.tip, data.focus);
+      setAiTipsHistory(localDb.getAITips());
     } catch (err: any) {
-      console.warn('Layanan backend AI tidak tersedia, menggunakan generator cerdas lokal:', err);
+      console.warn('Gagal memuat tips AI online, menggunakan versi lokal:', err);
       // Fallback seamlessly to local smart rules generator
-      const localTip = generateLocalTip(activeBP, activeWeight);
-      setHealthTip({
-        tip: localTip.tip,
-        focus: `${localTip.focus} (Lokal)`
-      });
-      localStorage.setItem('bp_health_tip', JSON.stringify({
-        tip: localTip.tip,
-        focus: `${localTip.focus} (Lokal)`
-      }));
+      const localTipData = generateLocalTip(activeBP, activeWeight);
+      const newTip = localDb.saveAITip(localTipData.tip, `${localTipData.focus} (Lokal)`);
+      setAiTipsHistory(localDb.getAITips());
     } finally {
       setIsGeneratingTip(false);
     }
@@ -260,10 +259,13 @@ export default function App() {
 
   // Trigger health tips auto-generation if not generated yet and logs are available
   useEffect(() => {
-    if (!healthTip && !isGeneratingTip && (bpLogs.length > 0 || weightLogs.length > 0)) {
+    const todayStr = new Date().toLocaleDateString();
+    const hasTipToday = aiTipsHistory.some(t => new Date(t.created_at).toLocaleDateString() === todayStr);
+
+    if (!hasTipToday && !isGeneratingTip && (bpLogs.length > 0 || weightLogs.length > 0)) {
       handleGenerateHealthTip(false, bpLogs[bpLogs.length - 1], weightLogs[weightLogs.length - 1]);
     }
-  }, [bpLogs, weightLogs]);
+  }, [bpLogs, weightLogs, aiTipsHistory, isGeneratingTip]);
 
   // Sync dark mode class
   useEffect(() => {
@@ -1070,7 +1072,7 @@ export default function App() {
     <div id="main-app-container" className="min-h-screen bg-[#F8FAFC] dark:bg-slate-950 text-slate-900 dark:text-slate-100 flex flex-col font-sans selection:bg-indigo-100 dark:selection:bg-indigo-950 selection:text-indigo-900 dark:selection:text-indigo-200 pb-16 transition-colors duration-200 animate-fade-in">
       
       {/* HEADER BAR */}
-      <header id="header-bar" className="sticky top-0 z-40 w-full border-b border-slate-200/80 dark:border-slate-800 bg-[#F8FAFC]/90 dark:bg-slate-950/90 backdrop-blur-md px-4 sm:px-6 py-4">
+      <header id="header-bar" className="sticky top-0 z-40 w-full border-b border-slate-200 dark:border-slate-700/80 dark:border-slate-800 bg-[#F8FAFC]/90 dark:bg-slate-950/90 backdrop-blur-md px-4 sm:px-6 py-4">
         <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4">
           
           {/* Logo Title */}
@@ -1100,42 +1102,85 @@ export default function App() {
                 <RefreshCw className="h-3 w-3 animate-spin text-indigo-500 dark:text-indigo-400" />
                 <span>Menyinkronkan...</span>
               </div>
-            ) : (
-              <button
-                onClick={() => setIsConfigOpen(true)}
-                className="bg-emerald-50 dark:bg-emerald-950/30 text-emerald-700 dark:text-emerald-400 border-emerald-200 dark:border-emerald-900/40 text-[11px] font-bold px-3 py-1.5 rounded-full flex items-center gap-1.5 transition-all border shadow-xs hover:bg-emerald-100 dark:hover:bg-emerald-950/50"
-              >
-                <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse"></span>
-                <span>Tersinkronisasi</span>
-              </button>
-            )}
+            ) : null}
 
+            {/* TAB SWITCHER IN HEADER */}
+            <div className="flex items-center gap-1 p-1 rounded-xl border border-slate-200 dark:border-slate-800 bg-white/50 dark:bg-slate-900/50 backdrop-blur-sm mr-2">
+              <button
+                type="button"
+                onClick={() => setActiveMainTab('dashboard')}
+                title="Dashboard: Tensi, Nadi, Berat"
+                className={`p-2 rounded-lg transition-all cursor-pointer ${
+                  activeMainTab === 'dashboard'
+                    ? 'bg-indigo-600 text-white shadow-md shadow-indigo-100 dark:shadow-none'
+                    : 'text-slate-500 dark:text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-slate-100 dark:bg-slate-800 dark:hover:bg-slate-800'
+                }`}
+              >
+                <LayoutDashboard className="h-4 w-4" />
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setActiveMainTab('input')}
+                title="Input Data Baru"
+                className={`p-2 rounded-lg transition-all cursor-pointer ${
+                  activeMainTab === 'input'
+                    ? 'bg-indigo-600 text-white shadow-md shadow-indigo-100 dark:shadow-none'
+                    : 'text-slate-500 dark:text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-slate-100 dark:bg-slate-800 dark:hover:bg-slate-800'
+                }`}
+              >
+                <Plus className="h-4 w-4" />
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setActiveMainTab('riwayat')}
+                title="Riwayat Pengukuran"
+                className={`p-2 rounded-lg transition-all cursor-pointer ${
+                  activeMainTab === 'riwayat'
+                    ? 'bg-indigo-600 text-white shadow-md shadow-indigo-100 dark:shadow-none'
+                    : 'text-slate-500 dark:text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-slate-100 dark:bg-slate-800 dark:hover:bg-slate-800'
+                }`}
+              >
+                <History className="h-4 w-4" />
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setActiveMainTab('seting')}
+                title="Pengaturan & Profil"
+                className={`p-2 rounded-lg transition-all cursor-pointer ${
+                  activeMainTab === 'seting'
+                    ? 'bg-indigo-600 text-white shadow-md shadow-indigo-100 dark:shadow-none'
+                    : 'text-slate-500 dark:text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-slate-100 dark:bg-slate-800 dark:hover:bg-slate-800'
+                }`}
+              >
+                <Settings className="h-4 w-4" />
+              </button>
+            </div>
 
             {/* Config & Logout Buttons */}
             <div className="flex items-center gap-1.5">
               <button
+                onClick={() => setIsConfigOpen(true)}
+                title={!isOffline && !isSyncing ? "Tersinkronisasi (Atur Supabase)" : "Atur Sambungan Supabase"}
+                className={`p-2 rounded-xl border transition-all active:scale-95 shadow-xs flex items-center justify-center ${
+                  !isOffline && !isSyncing
+                    ? 'border-emerald-200 dark:border-emerald-900/40 bg-emerald-50 dark:bg-emerald-950/30 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-100 dark:hover:bg-emerald-950/50'
+                    : 'border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-900/50 dark:hover:bg-slate-800 hover:text-indigo-600 dark:hover:text-indigo-400'
+                }`}
+              >
+                <Database className={`h-4 w-4 ${!isOffline && !isSyncing ? 'animate-pulse' : ''}`} />
+              </button>
+
+              <button
                 onClick={() => setIsDark(!isDark)}
                 title={isDark ? "Ganti ke Mode Terang" : "Ganti ke Mode Gelap"}
-                className="p-2 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-500 dark:text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 transition-all active:scale-95 shadow-xs flex items-center justify-center"
+                className="p-2 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-slate-900/50 dark:hover:bg-slate-800 text-slate-500 dark:text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 transition-all active:scale-95 shadow-xs flex items-center justify-center"
               >
                 {isDark ? <Sun className="h-4 w-4 text-amber-500" /> : <Moon className="h-4 w-4" />}
               </button>
 
-              <button
-                onClick={() => setIsConfigOpen(true)}
-                title="Atur Sambungan Supabase"
-                className="p-2 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-slate-800 hover:text-indigo-600 dark:hover:text-indigo-400 transition-all text-slate-500 dark:text-slate-400 active:scale-95 shadow-xs"
-              >
-                <Database className="h-4 w-4" />
-              </button>
-
-              <button
-                onClick={handleLogout}
-                title={isDemo ? "Masuk ke Akun Cloud" : "Keluar Akun"}
-                className="p-2 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 hover:bg-rose-50 dark:hover:bg-rose-950/30 hover:text-rose-600 dark:hover:text-rose-400 transition-all text-slate-500 dark:text-slate-400 active:scale-95 shadow-xs flex items-center gap-1"
-              >
-                <LogOut className="h-4 w-4" />
-              </button>
             </div>
           </div>
 
@@ -1165,61 +1210,6 @@ export default function App() {
       {/* MAIN LAYOUT WRAPPER */}
       <main className="flex-1 w-full max-w-7xl mx-auto px-4 sm:px-6 py-6 space-y-6">
         
-        {/* TAB SWITCHER */}
-        <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/80 dark:border-slate-800 p-2 shadow-sm flex gap-1.5 sticky top-[76px] z-30 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md max-w-md mx-auto w-full transition-all">
-          <button
-            type="button"
-            onClick={() => setActiveMainTab('dashboard')}
-            title="Dashboard: Tensi, Nadi, Berat"
-            className={`flex-1 flex items-center justify-center py-3 px-4 rounded-xl transition-all cursor-pointer ${
-              activeMainTab === 'dashboard'
-                ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-100 dark:shadow-none'
-                : 'text-slate-500 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-slate-50 dark:hover:bg-slate-800'
-            }`}
-          >
-            <LayoutDashboard className="h-5 w-5" />
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setActiveMainTab('input')}
-            title="Input Data Baru"
-            className={`flex-1 flex items-center justify-center py-3 px-4 rounded-xl transition-all cursor-pointer ${
-              activeMainTab === 'input'
-                ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-100 dark:shadow-none'
-                : 'text-slate-500 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-slate-50 dark:hover:bg-slate-800'
-            }`}
-          >
-            <Plus className="h-5 w-5" />
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setActiveMainTab('riwayat')}
-            title="Riwayat Pengukuran"
-            className={`flex-1 flex items-center justify-center py-3 px-4 rounded-xl transition-all cursor-pointer ${
-              activeMainTab === 'riwayat'
-                ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-100 dark:shadow-none'
-                : 'text-slate-500 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-slate-50 dark:hover:bg-slate-800'
-            }`}
-          >
-            <History className="h-5 w-5" />
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setActiveMainTab('seting')}
-            title="Pengaturan & Profil"
-            className={`flex-1 flex items-center justify-center py-3 px-4 rounded-xl transition-all cursor-pointer ${
-              activeMainTab === 'seting'
-                ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-100 dark:shadow-none'
-                : 'text-slate-500 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-slate-50 dark:hover:bg-slate-800'
-            }`}
-          >
-            <Settings className="h-5 w-5" />
-          </button>
-        </div>
-
         {/* ROW 1: REAL-TIME HEALTH SCORE CARDS */}
         {activeMainTab === 'dashboard' && (
           <section id="health-cards-grid" className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 animate-fade-in">
@@ -1228,7 +1218,7 @@ export default function App() {
             <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 p-6 shadow-sm flex flex-col justify-between hover:border-slate-300 dark:hover:border-slate-700 transition-all duration-200">
               <div>
                 <div className="flex items-center justify-between mb-4">
-                  <span className="text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider">Tensi Darah Terakhir</span>
+                  <span className="text-xs font-bold text-slate-400 dark:text-slate-500 dark:text-slate-400 tracking-wider">Tensi Darah Terakhir</span>
                   <Heart className="h-5.5 w-5.5 text-rose-500 fill-rose-50 dark:fill-rose-950/20" />
                 </div>
                 {latestBP ? (
@@ -1237,7 +1227,7 @@ export default function App() {
                       <span className="text-3xl font-extrabold text-slate-800 dark:text-slate-100 font-mono tracking-tight">
                         {latestBP.systolic} / {latestBP.diastolic}
                       </span>
-                      <span className="text-xs font-semibold text-slate-400 dark:text-slate-500">mmHg</span>
+                      <span className="text-xs font-semibold text-slate-400 dark:text-slate-500 dark:text-slate-400">mmHg</span>
                     </div>
                     
                     {/* Dynamic diagnosis badge */}
@@ -1248,7 +1238,7 @@ export default function App() {
                           <span className={`inline-block text-[10px] font-bold px-2.5 py-1 rounded-md border ${evalBP.bg} ${evalBP.border} ${evalBP.text}`}>
                             {evalBP.category}
                           </span>
-                          <p className="text-xs text-slate-600 dark:text-slate-350 mt-2.5 leading-relaxed italic">
+                          <p className="text-xs text-slate-600 dark:text-slate-300 dark:text-slate-350 mt-2.5 leading-relaxed italic">
                             "{evalBP.advice}"
                           </p>
                         </div>
@@ -1257,13 +1247,13 @@ export default function App() {
                   </div>
                 ) : (
                   <div className="py-6 text-center">
-                    <p className="text-xs text-slate-400 dark:text-slate-500 italic">Belum ada riwayat tensi</p>
+                    <p className="text-xs text-slate-400 dark:text-slate-500 dark:text-slate-400 italic">Belum ada riwayat tensi</p>
                   </div>
                 )}
               </div>
               {latestBP && (
-                <div className="border-t border-slate-100 dark:border-slate-800/80 pt-3 mt-4 flex items-center justify-between text-[10px] text-slate-400 dark:text-slate-500 font-semibold font-mono">
-                  <span>TERAKHIR DICATAT</span>
+                <div className="border-t border-slate-100 dark:border-slate-800/80 pt-3 mt-4 flex items-center justify-between text-[10px] text-slate-400 dark:text-slate-500 dark:text-slate-400 font-semibold font-mono">
+                  <span>Terakhir Dicatat</span>
                   <span>{new Date(latestBP.logged_at).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}</span>
                 </div>
               )}
@@ -1273,7 +1263,7 @@ export default function App() {
             <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 p-6 shadow-sm flex flex-col justify-between hover:border-slate-300 dark:hover:border-slate-700 transition-all duration-200">
               <div>
                 <div className="flex items-center justify-between mb-4">
-                  <span className="text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider">Detak Nadi Terakhir</span>
+                  <span className="text-xs font-bold text-slate-400 dark:text-slate-500 dark:text-slate-400 tracking-wider">Detak Nadi Terakhir</span>
                   <Activity className="h-5.5 w-5.5 text-indigo-500" />
                 </div>
                 {latestBP ? (
@@ -1282,7 +1272,7 @@ export default function App() {
                       <span className="text-3xl font-extrabold text-slate-800 dark:text-slate-100 font-mono tracking-tight">
                         {latestBP.pulse}
                       </span>
-                      <span className="text-xs font-semibold text-slate-400 dark:text-slate-500">bpm (Detak/Menit)</span>
+                      <span className="text-xs font-semibold text-slate-400 dark:text-slate-500 dark:text-slate-400">bpm (Detak/Menit)</span>
                     </div>
                     
                     {/* Dynamic pulse details */}
@@ -1293,7 +1283,7 @@ export default function App() {
                           <span className={`inline-block text-[10px] font-bold px-2.5 py-1 rounded-md ${pEval.color}`}>
                             Kondisi: {pEval.label}
                           </span>
-                          <p className="text-xs text-slate-600 dark:text-slate-350 mt-2.5 leading-relaxed">
+                          <p className="text-xs text-slate-600 dark:text-slate-300 dark:text-slate-350 mt-2.5 leading-relaxed">
                             Detak jantung istirahat (RHR) yang normal berkisar antara 60 hingga 100 detak per menit bagi orang dewasa sehat.
                           </p>
                         </div>
@@ -1302,67 +1292,67 @@ export default function App() {
                   </div>
                 ) : (
                   <div className="py-6 text-center">
-                    <p className="text-xs text-slate-400 dark:text-slate-500 italic">Belum ada data detak nadi</p>
+                    <p className="text-xs text-slate-400 dark:text-slate-500 dark:text-slate-400 italic">Belum ada data detak nadi</p>
                   </div>
                 )}
               </div>
               {latestBP && (
-                <div className="border-t border-slate-100 dark:border-slate-800/80 pt-3 mt-4 flex items-center justify-between text-[10px] text-slate-400 dark:text-slate-500 font-semibold font-mono">
-                  <span>TERAKHIR DICATAT</span>
+                <div className="border-t border-slate-100 dark:border-slate-800/80 pt-3 mt-4 flex items-center justify-between text-[10px] text-slate-400 dark:text-slate-500 dark:text-slate-400 font-semibold font-mono">
+                  <span>Terakhir Dicatat</span>
                   <span>{new Date(latestBP.logged_at).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}</span>
                 </div>
               )}
             </div>
 
-            {/* Weight Card - Dark Bento Block Style */}
-            <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 shadow-sm flex flex-col justify-between text-white hover:bg-slate-850 transition-all duration-200">
+            {/* Weight Card */}
+            <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 p-6 shadow-sm flex flex-col justify-between hover:border-slate-300 dark:hover:border-slate-700 transition-all duration-200">
               <div>
                 <div className="flex items-center justify-between mb-4">
-                  <span className="text-xs font-bold text-slate-300 opacity-80 uppercase tracking-wider">Berat Badan Terakhir</span>
-                  <Scale className="h-5.5 w-5.5 text-amber-400" />
+                  <span className="text-xs font-bold text-slate-400 dark:text-slate-500 dark:text-slate-400 tracking-wider">Berat Badan Terakhir</span>
+                  <Scale className="h-5.5 w-5.5 text-amber-500" />
                 </div>
                 {latestWeight ? (
                   <div>
                     <div className="flex items-baseline gap-2">
-                      <span className="text-3xl font-extrabold text-white font-mono tracking-tight">
+                      <span className="text-3xl font-extrabold text-slate-800 dark:text-slate-100 font-mono tracking-tight">
                         {Number(latestWeight.weight).toFixed(1)}
                       </span>
-                      <span className="text-xs font-semibold text-slate-300">kg</span>
+                      <span className="text-xs font-semibold text-slate-400 dark:text-slate-500 dark:text-slate-400">kg</span>
                       
                       {/* Weight change badge */}
                       {weightChange && (
                         <span className={`ml-2 inline-flex items-center gap-0.5 text-xs font-bold px-2 py-0.5 rounded-full ${
                           weightChange.isLoss 
-                            ? 'bg-emerald-500/15 text-emerald-300' 
+                            ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300' 
                             : weightChange.isGain 
-                              ? 'bg-rose-500/15 text-rose-300' 
-                              : 'bg-white/10 text-slate-300'
+                              ? 'bg-rose-100 text-rose-700 dark:bg-rose-500/15 dark:text-rose-300' 
+                              : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 dark:bg-white/10 dark:text-slate-300'
                         }`}>
-                          <TrendingUp className={`h-3 w-3 ${weightChange.isLoss ? 'rotate-180 text-emerald-400' : 'text-rose-400'}`} />
+                          <TrendingUp className={`h-3 w-3 ${weightChange.isLoss ? 'rotate-180 text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`} />
                           <span>{weightChange.isLoss ? '-' : '+'}{weightChange.value} kg</span>
                         </span>
                       )}
                     </div>
                     
                     <div className="mt-3">
-                      <p className="text-xs text-slate-300 leading-relaxed opacity-90">
+                      <p className="text-xs text-slate-600 dark:text-slate-300 dark:text-slate-400 leading-relaxed">
                         Melacak fluktuasi berat badan secara konsisten membantu memahami korelasi retensi cairan atau asupan nutrisi harian Anda terhadap tekanan darah.
                       </p>
                     </div>
 
                     {weightProgress ? (
-                      <div className="mt-4 pt-3 border-t border-white/10 space-y-2">
+                      <div className="mt-4 pt-3 border-t border-slate-100 dark:border-slate-800/80 space-y-2">
                         <div className="flex items-center justify-between text-xs">
-                          <span className="text-slate-300 font-semibold">Target: {weightProgress.target.toFixed(1)} kg</span>
-                          <span className="text-amber-400 font-extrabold">{weightProgress.percent}%</span>
+                          <span className="text-slate-600 dark:text-slate-300 font-semibold">Target: {weightProgress.target.toFixed(1)} kg</span>
+                          <span className="text-amber-500 dark:text-amber-400 font-extrabold">{weightProgress.percent}%</span>
                         </div>
-                        <div className="w-full h-2 bg-slate-800 rounded-full overflow-hidden">
+                        <div className="w-full h-2 bg-slate-100 dark:bg-slate-800 dark:bg-slate-800 rounded-full overflow-hidden">
                           <div 
                             className="bg-amber-400 h-full rounded-full transition-all duration-500" 
                             style={{ width: `${weightProgress.percent}%` }}
                           />
                         </div>
-                        <p className="text-[10px] text-slate-300 font-medium">
+                        <p className="text-[10px] text-slate-500 dark:text-slate-400 font-medium">
                           {weightProgress.isCompleted 
                             ? 'Target berat badan Anda telah tercapai! 🎉 Luar biasa!' 
                             : `${weightProgress.isLoss ? 'Kurang' : 'Butuh'} ${weightProgress.diff.toFixed(1)} kg lagi menuju target.`
@@ -1370,18 +1360,18 @@ export default function App() {
                         </p>
                       </div>
                     ) : (
-                      <div className="mt-4 pt-3 border-t border-white/10">
-                        <p className="text-[10px] text-slate-400 italic">
+                      <div className="mt-4 pt-3 border-t border-slate-100 dark:border-slate-800/80">
+                        <p className="text-[10px] text-slate-500 dark:text-slate-400 italic">
                           Atur target berat badan di tab profil untuk melacak progres pencapaian Anda.
                         </p>
                       </div>
                     )}
 
                     {/* BMI Calculator Section */}
-                    <div className="mt-4 pt-3 border-t border-white/10 space-y-2">
+                    <div className="mt-4 pt-3 border-t border-slate-100 dark:border-slate-800/80 space-y-2">
                       <div className="flex items-center justify-between">
-                        <span className="text-[10px] font-bold text-slate-300 opacity-80 uppercase tracking-wider flex items-center gap-1">
-                          <Activity className="h-3.5 w-3.5 text-emerald-400" />
+                        <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 dark:text-slate-400 tracking-wider flex items-center gap-1">
+                          <Activity className="h-3.5 w-3.5 text-emerald-500" />
                           Body Mass Index (BMI)
                         </span>
                         {bmiData && (
@@ -1392,23 +1382,23 @@ export default function App() {
                       </div>
 
                       {bmiData ? (
-                        <div className="bg-slate-800/30 border border-slate-850 rounded-xl p-2.5 space-y-1">
+                        <div className="bg-slate-50 dark:bg-slate-800/30 border border-slate-200 dark:border-slate-700 dark:border-slate-850 rounded-xl p-2.5 space-y-1">
                           <div className="flex items-baseline gap-1.5">
-                            <span className="text-xl font-extrabold text-white font-mono tracking-tight">
+                            <span className="text-xl font-extrabold text-slate-800 dark:text-slate-100 font-mono tracking-tight">
                               {bmiData.value}
                             </span>
-                            <span className="text-[9px] font-semibold text-slate-400">skor BMI</span>
+                            <span className="text-[9px] font-semibold text-slate-500 dark:text-slate-400">skor BMI</span>
                           </div>
-                          <p className="text-[10px] text-slate-300 opacity-90 leading-normal">
+                          <p className="text-[10px] text-slate-600 dark:text-slate-300 leading-normal">
                             {bmiData.suggestion}
                           </p>
-                          <p className="text-[9px] text-slate-500 font-mono mt-0.5">
+                          <p className="text-[9px] text-slate-400 dark:text-slate-500 dark:text-slate-400 font-mono mt-0.5">
                             Tinggi: {profile?.height} cm
                           </p>
                         </div>
                       ) : (
-                        <div className="bg-slate-800/30 border border-slate-850 rounded-xl p-2.5 text-center">
-                          <p className="text-[10px] text-slate-300 mb-1.5 leading-normal">
+                        <div className="bg-slate-50 dark:bg-slate-800/30 border border-slate-200 dark:border-slate-700 dark:border-slate-850 rounded-xl p-2.5 text-center">
+                          <p className="text-[10px] text-slate-600 dark:text-slate-300 dark:text-slate-400 mb-1.5 leading-normal">
                             Atur tinggi badan di tab profil untuk menghitung BMI secara otomatis.
                           </p>
                           <button
@@ -1417,7 +1407,7 @@ export default function App() {
                               setActiveMainTab('seting');
                               setIsEditingProfile(true);
                             }}
-                            className="inline-flex items-center gap-1 text-[10px] font-bold text-amber-400 hover:text-amber-300 transition-colors cursor-pointer"
+                            className="inline-flex items-center gap-1 text-[10px] font-bold text-amber-600 dark:text-amber-400 hover:text-amber-700 dark:hover:text-amber-300 transition-colors cursor-pointer"
                           >
                             Atur Tinggi Badan Sekarang →
                           </button>
@@ -1427,13 +1417,13 @@ export default function App() {
                   </div>
                 ) : (
                   <div className="py-6 text-center">
-                    <p className="text-xs text-slate-400 italic">Belum ada riwayat berat badan</p>
+                    <p className="text-xs text-slate-400 dark:text-slate-500 dark:text-slate-400 italic">Belum ada riwayat berat badan</p>
                   </div>
                 )}
               </div>
               {latestWeight && (
-                <div className="border-t border-white/10 pt-3 mt-4 flex items-center justify-between text-[10px] text-slate-400 font-semibold font-mono">
-                  <span>TERAKHIR DICATAT</span>
+                <div className="border-t border-slate-100 dark:border-slate-800/80 pt-3 mt-4 flex items-center justify-between text-[10px] text-slate-400 dark:text-slate-500 dark:text-slate-400 font-semibold font-mono">
+                  <span>Terakhir Dicatat</span>
                   <span>{new Date(latestWeight.logged_at).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}</span>
                 </div>
               )}
@@ -1443,7 +1433,7 @@ export default function App() {
             <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 p-6 shadow-sm flex flex-col justify-between hover:border-slate-300 dark:hover:border-slate-700 transition-all duration-200">
               <div>
                 <div className="flex items-center justify-between mb-4">
-                  <span className="text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider">Rata-Rata 7 Hari Terakhir</span>
+                  <span className="text-xs font-bold text-slate-400 dark:text-slate-500 dark:text-slate-400 tracking-wider">Rata-Rata 7 Hari Terakhir</span>
                   <Calendar className="h-5.5 w-5.5 text-indigo-500 dark:text-indigo-400" />
                 </div>
                 {weeklySummary.bpCount > 0 || weeklySummary.weightCount > 0 ? (
@@ -1451,12 +1441,12 @@ export default function App() {
                     {/* BP Average Section */}
                     {weeklySummary.avgSystolic && weeklySummary.avgDiastolic ? (
                       <div>
-                        <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider block mb-1">Tekanan Darah</span>
+                        <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 dark:text-slate-400 tracking-wider block mb-1">Tekanan Darah</span>
                         <div className="flex items-baseline gap-1.5">
                           <span className="text-2xl font-extrabold text-slate-800 dark:text-slate-100 font-mono tracking-tight">
                             {Math.round(weeklySummary.avgSystolic)} / {Math.round(weeklySummary.avgDiastolic)}
                           </span>
-                          <span className="text-[11px] font-semibold text-slate-400 dark:text-slate-500">mmHg</span>
+                          <span className="text-[11px] font-semibold text-slate-400 dark:text-slate-500 dark:text-slate-400">mmHg</span>
                         </div>
                         {(() => {
                           const evalBP = getBPCategoryDetails(Math.round(weeklySummary.avgSystolic), Math.round(weeklySummary.avgDiastolic));
@@ -1469,7 +1459,7 @@ export default function App() {
                       </div>
                     ) : (
                       <div>
-                        <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider block mb-1">Tekanan Darah</span>
+                        <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 dark:text-slate-400 tracking-wider block mb-1">Tekanan Darah</span>
                         <p className="text-xs text-slate-400 italic">Belum ada rekaman tensi</p>
                       </div>
                     )}
@@ -1477,30 +1467,30 @@ export default function App() {
                     {/* Weight Average Section */}
                     {weeklySummary.avgWeight ? (
                       <div className="pt-2 border-t border-slate-100 dark:border-slate-800/80">
-                        <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider block mb-1">Berat Badan</span>
+                        <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 dark:text-slate-400 tracking-wider block mb-1">Berat Badan</span>
                         <div className="flex items-baseline gap-1.5">
                           <span className="text-2xl font-extrabold text-slate-800 dark:text-slate-100 font-mono tracking-tight">
                             {weeklySummary.avgWeight.toFixed(1)}
                           </span>
-                          <span className="text-[11px] font-semibold text-slate-400 dark:text-slate-500">kg</span>
+                          <span className="text-[11px] font-semibold text-slate-400 dark:text-slate-500 dark:text-slate-400">kg</span>
                         </div>
                       </div>
                     ) : (
                       <div className="pt-2 border-t border-slate-100 dark:border-slate-800/80">
-                        <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider block mb-1">Berat Badan</span>
+                        <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 dark:text-slate-400 tracking-wider block mb-1">Berat Badan</span>
                         <p className="text-xs text-slate-400 italic">Belum ada rekaman berat</p>
                       </div>
                     )}
                   </div>
                 ) : (
                   <div className="py-6 text-center">
-                    <p className="text-xs text-slate-400 dark:text-slate-500 italic">Belum ada rekam medis dalam 7 hari terakhir.</p>
+                    <p className="text-xs text-slate-400 dark:text-slate-500 dark:text-slate-400 italic">Belum ada rekam medis dalam 7 hari terakhir.</p>
                   </div>
                 )}
               </div>
-              <div className="border-t border-slate-100 dark:border-slate-800/80 pt-3 mt-4 flex items-center justify-between text-[10px] text-slate-400 dark:text-slate-500 font-semibold font-mono">
-                <span>TOTAL REKAMAN</span>
-                <span>{weeklySummary.bpCount + weeklySummary.weightCount} DATA</span>
+              <div className="border-t border-slate-100 dark:border-slate-800/80 pt-3 mt-4 flex items-center justify-between text-[10px] text-slate-400 dark:text-slate-500 dark:text-slate-400 font-semibold font-mono">
+                <span>Total Rekaman</span>
+                <span>{weeklySummary.bpCount + weeklySummary.weightCount} Data</span>
               </div>
             </div>
 
@@ -1521,7 +1511,7 @@ export default function App() {
                 </div>
                 <div>
                   <div className="flex flex-wrap items-center gap-2">
-                    <h3 className="text-sm font-extrabold text-slate-800 dark:text-slate-100 uppercase tracking-wider">
+                    <h3 className="text-sm font-extrabold text-slate-800 dark:text-slate-100 tracking-wider">
                       Tips Kesehatan Harian AI
                     </h3>
                     {healthTip?.focus && (
@@ -1571,7 +1561,7 @@ export default function App() {
                   type="button"
                   onClick={() => handleGenerateHealthTip(true)}
                   disabled={isGeneratingTip}
-                  className="px-4 py-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 hover:border-indigo-300 dark:hover:border-indigo-900 rounded-xl hover:bg-slate-50 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 text-xs font-bold transition-all flex items-center gap-2 active:scale-95 disabled:opacity-50 disabled:pointer-events-none cursor-pointer shadow-xs shrink-0"
+                  className="px-4 py-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 hover:border-indigo-300 dark:hover:border-indigo-900 rounded-xl hover:bg-slate-50 dark:hover:bg-slate-900/50 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 dark:text-slate-300 text-xs font-bold transition-all flex items-center gap-2 active:scale-95 disabled:opacity-50 disabled:pointer-events-none cursor-pointer shadow-xs shrink-0"
                 >
                   <RefreshCw className={`h-4 w-4 text-indigo-500 ${isGeneratingTip ? 'animate-spin' : ''}`} />
                   <span>Segarkan Tips</span>
@@ -1584,27 +1574,27 @@ export default function App() {
         {activeMainTab === 'dashboard' && (
           <section className="grid grid-cols-1 lg:grid-cols-12 gap-6 animate-fade-in">
             {/* Detailed Graph Representation (Col 8) */}
-            <div className="lg:col-span-8 bg-white rounded-3xl border border-slate-200 p-6 shadow-sm hover:border-slate-300 transition-all duration-200 flex flex-col justify-between">
+            <div className="lg:col-span-8 bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 p-6 shadow-sm hover:border-slate-300 transition-all duration-200 flex flex-col justify-between">
               <div>
                 {/* Section Header with Tabs */}
                 <div className="flex flex-col sm:flex-row items-center justify-between border-b border-slate-100 pb-4 mb-6 gap-4">
                   <div>
-                    <h2 className="text-base font-extrabold text-slate-800 tracking-tight flex items-center gap-2">
+                    <h2 className="text-base font-extrabold text-slate-800 dark:text-slate-100 tracking-tight flex items-center gap-2">
                       <TrendingUp className="h-5 w-5 text-indigo-600" />
                       Grafik Tren Perkembangan Kesehatan
                     </h2>
-                    <p className="text-xs text-slate-500 font-medium">Visualisasi perkembangan tensi darah dan berat badan Anda</p>
+                    <p className="text-xs text-slate-500 dark:text-slate-400 font-medium">Visualisasi perkembangan tensi darah dan berat badan Anda</p>
                   </div>
 
                   {/* Tabs Trigger */}
-                  <div className="flex bg-slate-100/80 p-1.5 rounded-xl border border-slate-200/50 shrink-0">
+                  <div className="flex bg-slate-100 dark:bg-slate-800/80 p-1.5 rounded-xl border border-slate-200 dark:border-slate-700/50 shrink-0">
                     <button
                       type="button"
                       onClick={() => setCurrentTab('bp')}
                       className={`text-xs font-bold px-4 py-2 rounded-lg transition-all cursor-pointer ${
                         currentTab === 'bp'
                           ? 'bg-white text-indigo-600 shadow-md shadow-slate-100'
-                          : 'text-slate-500 hover:text-slate-800'
+                          : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-100'
                       }`}
                     >
                       Grafik Tensi & Nadi
@@ -1615,7 +1605,7 @@ export default function App() {
                       className={`text-xs font-bold px-4 py-2 rounded-lg transition-all cursor-pointer ${
                         currentTab === 'weight'
                           ? 'bg-white text-amber-600 shadow-md shadow-slate-100'
-                          : 'text-slate-500 hover:text-slate-800'
+                          : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-100'
                       }`}
                     >
                       Grafik Berat Badan
@@ -1635,7 +1625,7 @@ export default function App() {
                         transition={{ duration: 0.2 }}
                         className="flex items-center justify-center h-[320px] flex-col gap-3"
                       >
-                        <div className="inline-block h-8 w-8 animate-spin rounded-full border-4 border-slate-200 border-t-indigo-600"></div>
+                        <div className="inline-block h-8 w-8 animate-spin rounded-full border-4 border-slate-200 dark:border-slate-700 border-t-indigo-600"></div>
                         <p className="text-xs font-semibold text-slate-400">Sinkronisasi data pertama...</p>
                       </motion.div>
                     ) : currentTab === 'bp' ? (
@@ -1665,12 +1655,12 @@ export default function App() {
             </div>
 
             {/* Monthly Trend Pie Chart Card (Col 4) */}
-            <div className="lg:col-span-4 bg-white rounded-3xl border border-slate-200 p-6 shadow-sm flex flex-col justify-between hover:border-slate-300 transition-all duration-200">
+            <div className="lg:col-span-4 bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 p-6 shadow-sm flex flex-col justify-between hover:border-slate-300 transition-all duration-200">
               <div>
                 <div className="flex items-center justify-between mb-2">
                   <div>
-                    <h3 className="text-base font-extrabold text-slate-800 tracking-tight">Tren Kesehatan Bulanan</h3>
-                    <p className="text-xs text-slate-500 font-medium">Berdasarkan proporsi diagnosis tensi darah 30 hari terakhir</p>
+                    <h3 className="text-base font-extrabold text-slate-800 dark:text-slate-100 tracking-tight">Tren Kesehatan Bulanan</h3>
+                    <p className="text-xs text-slate-500 dark:text-slate-400 font-medium">Berdasarkan proporsi diagnosis tensi darah 30 hari terakhir</p>
                   </div>
                   <Activity className="h-5 w-5 text-indigo-500 shrink-0" />
                 </div>
@@ -1691,25 +1681,25 @@ export default function App() {
         {/* INPUT DATA TAB */}
         {activeMainTab === 'input' && (
           <div className="max-w-2xl mx-auto animate-fade-in space-y-6">
-            <div className="bg-white rounded-3xl border border-slate-200 p-6 shadow-sm hover:border-slate-300 transition-all duration-200">
+            <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 p-6 shadow-sm hover:border-slate-300 transition-all duration-200">
               {/* Form Header */}
               <div className="mb-6">
-                <h2 className="text-base font-extrabold text-slate-800 tracking-tight flex items-center gap-2">
+                <h2 className="text-base font-extrabold text-slate-800 dark:text-slate-100 tracking-tight flex items-center gap-2">
                   <Plus className="h-5 w-5 text-indigo-600" />
                   Catat Pengukuran Baru
                 </h2>
-                <p className="text-xs text-slate-500 font-medium">Tambahkan rekaman tekanan darah, detak jantung, atau berat badan Anda secara teratur</p>
+                <p className="text-xs text-slate-500 dark:text-slate-400 font-medium">Tambahkan rekaman tekanan darah, detak jantung, atau berat badan Anda secara teratur</p>
               </div>
 
               {/* Form Tab Toggles */}
-              <div className="flex bg-slate-100/80 p-1.5 rounded-xl border border-slate-200/50 mb-6 gap-2">
+              <div className="flex bg-slate-100 dark:bg-slate-800/80 p-1.5 rounded-xl border border-slate-200 dark:border-slate-700/50 mb-6 gap-2">
                 <button
                   type="button"
                   onClick={() => setFormTab('bp')}
                   className={`flex-1 text-center py-2.5 px-1 text-xs font-bold rounded-lg transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
                     formTab === 'bp'
                       ? 'bg-indigo-600 text-white shadow-md shadow-indigo-100'
-                      : 'text-slate-500 hover:bg-slate-50 hover:text-slate-750'
+                      : 'text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-900/50 hover:text-slate-750'
                   }`}
                 >
                   <Heart className="h-3.5 w-3.5" />
@@ -1721,7 +1711,7 @@ export default function App() {
                   className={`flex-1 text-center py-2.5 px-1 text-xs font-bold rounded-lg transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
                     formTab === 'weight'
                       ? 'bg-amber-500 text-white shadow-md shadow-amber-100'
-                      : 'text-slate-500 hover:bg-slate-50 hover:text-slate-750'
+                      : 'text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-900/50 hover:text-slate-750'
                   }`}
                 >
                   <Scale className="h-3.5 w-3.5" />
@@ -1735,7 +1725,7 @@ export default function App() {
                   {/* Grid Inputs */}
                   <div className="grid grid-cols-3 gap-3">
                     <div>
-                      <label className="block text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-1.5">
+                      <label className="block text-[11px] font-bold text-slate-400 tracking-wider mb-1.5">
                         Sistolik (SYS)
                       </label>
                       <div className="relative">
@@ -1748,14 +1738,14 @@ export default function App() {
                           value={sysInput}
                           onChange={(e) => handleSysChange(e.target.value)}
                           required
-                          className="w-full text-center font-bold text-base bg-slate-50 border border-slate-200 rounded-xl py-2.5 px-1 outline-none focus:border-indigo-500 focus:bg-white focus:ring-4 focus:ring-indigo-100/30 transition-all font-mono text-rose-600 placeholder:text-slate-300"
+                          className="w-full text-center font-bold text-base bg-slate-50 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-700 rounded-xl py-2.5 px-1 outline-none focus:border-indigo-500 dark:focus:border-indigo-400 focus:bg-white dark:focus:bg-slate-800 focus:ring-4 focus:ring-indigo-100/30 dark:focus:ring-indigo-900/30 transition-all font-mono text-rose-600 placeholder:text-slate-300"
                         />
-                        <span className="absolute bottom-1 right-0 left-0 text-[8px] font-bold text-slate-400 text-center pointer-events-none uppercase">mmHg</span>
+                        <span className="absolute bottom-1 right-0 left-0 text-[8px] font-bold text-slate-400 text-center pointer-events-none">mmHg</span>
                       </div>
                     </div>
 
                     <div>
-                      <label className="block text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-1.5">
+                      <label className="block text-[11px] font-bold text-slate-400 tracking-wider mb-1.5">
                         Diastolik (DIA)
                       </label>
                       <div className="relative">
@@ -1768,14 +1758,14 @@ export default function App() {
                           value={diaInput}
                           onChange={(e) => handleDiaChange(e.target.value)}
                           required
-                          className="w-full text-center font-bold text-base bg-slate-50 border border-slate-200 rounded-xl py-2.5 px-1 outline-none focus:border-indigo-500 focus:bg-white focus:ring-4 focus:ring-indigo-100/30 transition-all font-mono text-blue-600 placeholder:text-slate-300"
+                          className="w-full text-center font-bold text-base bg-slate-50 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-700 rounded-xl py-2.5 px-1 outline-none focus:border-indigo-500 dark:focus:border-indigo-400 focus:bg-white dark:focus:bg-slate-800 focus:ring-4 focus:ring-indigo-100/30 dark:focus:ring-indigo-900/30 transition-all font-mono text-blue-600 placeholder:text-slate-300"
                         />
-                        <span className="absolute bottom-1 right-0 left-0 text-[8px] font-bold text-slate-400 text-center pointer-events-none uppercase">mmHg</span>
+                        <span className="absolute bottom-1 right-0 left-0 text-[8px] font-bold text-slate-400 text-center pointer-events-none">mmHg</span>
                       </div>
                     </div>
 
                     <div>
-                      <label className="block text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-1.5">
+                      <label className="block text-[11px] font-bold text-slate-400 tracking-wider mb-1.5">
                         Detak Nadi
                       </label>
                       <div className="relative">
@@ -1788,16 +1778,16 @@ export default function App() {
                           value={pulseInput}
                           onChange={(e) => setPulseInput(e.target.value)}
                           required
-                          className="w-full text-center font-bold text-base bg-slate-50 border border-slate-200 rounded-xl py-2.5 px-1 outline-none focus:border-indigo-500 focus:bg-white focus:ring-4 focus:ring-indigo-100/30 transition-all font-mono text-emerald-600 placeholder:text-slate-300"
+                          className="w-full text-center font-bold text-base bg-slate-50 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-700 rounded-xl py-2.5 px-1 outline-none focus:border-indigo-500 dark:focus:border-indigo-400 focus:bg-white dark:focus:bg-slate-800 focus:ring-4 focus:ring-indigo-100/30 dark:focus:ring-indigo-900/30 transition-all font-mono text-emerald-600 placeholder:text-slate-300"
                         />
-                        <span className="absolute bottom-1 right-0 left-0 text-[8px] font-bold text-slate-400 text-center pointer-events-none uppercase">bpm</span>
+                        <span className="absolute bottom-1 right-0 left-0 text-[8px] font-bold text-slate-400 text-center pointer-events-none">bpm</span>
                       </div>
                     </div>
                   </div>
 
                   {/* Date & Time Picker */}
                   <div>
-                    <label className="block text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-1.5 flex items-center gap-1">
+                    <label className="block text-[11px] font-bold text-slate-400 tracking-wider mb-1.5 flex items-center gap-1">
                       <Calendar className="h-3 w-3" /> Tanggal & Waktu Pengukuran
                     </label>
                     <input
@@ -1805,13 +1795,13 @@ export default function App() {
                       value={bpDate}
                       readOnly
                       required
-                      className="w-full rounded-xl border border-slate-200 px-3.5 py-2.5 text-xs outline-none bg-slate-100 text-slate-400 dark:bg-slate-800 dark:border-slate-800 font-mono cursor-not-allowed select-none"
+                      className="w-full rounded-xl border border-slate-200 dark:border-slate-700 px-3.5 py-2.5 text-xs outline-none bg-slate-100 dark:bg-slate-800 text-slate-400 dark:bg-slate-800 dark:border-slate-800 font-mono cursor-not-allowed select-none"
                     />
                   </div>
 
                   {/* Notes */}
                   <div>
-                    <label className="block text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-1.5">
+                    <label className="block text-[11px] font-bold text-slate-400 tracking-wider mb-1.5">
                       Catatan Tambahan (Gejala / Aktivitas)
                     </label>
                     <textarea
@@ -1820,7 +1810,7 @@ export default function App() {
                       onChange={(e) => setBpNotes(e.target.value)}
                       maxLength={150}
                       rows={2}
-                      className="w-full rounded-xl border border-slate-200 p-3 text-xs outline-none bg-slate-50 focus:bg-white focus:border-indigo-500 focus:ring-4 focus:ring-indigo-100/30 transition-all text-slate-600"
+                      className="w-full rounded-xl border border-slate-200 dark:border-slate-700 p-3 text-xs outline-none bg-slate-50 dark:bg-slate-900/50 focus:bg-white dark:focus:bg-slate-800 focus:border-indigo-500 dark:focus:border-indigo-400 focus:ring-4 focus:ring-indigo-100/30 dark:focus:ring-indigo-900/30 transition-all text-slate-600 dark:text-slate-300"
                     />
                   </div>
 
@@ -1839,7 +1829,7 @@ export default function App() {
                 <form onSubmit={handleAddWeight} className="space-y-4">
                   {/* Weight Input */}
                   <div>
-                    <label className="block text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-1.5">
+                    <label className="block text-[11px] font-bold text-slate-400 tracking-wider mb-1.5">
                       Berat Badan Sekarang
                     </label>
                     <div className="relative">
@@ -1852,7 +1842,7 @@ export default function App() {
                         value={weightInput}
                         onChange={(e) => setWeightInput(e.target.value)}
                         required
-                        className="w-full rounded-xl border border-slate-200 pl-4 pr-12 py-3 text-base font-extrabold text-amber-600 font-mono outline-none focus:border-amber-500 focus:bg-white focus:ring-4 focus:ring-amber-100/30 bg-slate-50 transition-all placeholder:text-amber-200"
+                        className="w-full rounded-xl border border-slate-200 dark:border-slate-700 pl-4 pr-12 py-3 text-base font-extrabold text-amber-600 font-mono outline-none focus:border-amber-500 dark:focus:border-amber-400 focus:bg-white dark:focus:bg-slate-800 focus:ring-4 focus:ring-amber-100/30 dark:focus:ring-amber-900/30 bg-slate-50 dark:bg-slate-900/50 transition-all placeholder:text-amber-200"
                       />
                       <span className="absolute inset-y-0 right-4 flex items-center text-xs font-bold text-slate-400 font-mono">kg</span>
                     </div>
@@ -1860,7 +1850,7 @@ export default function App() {
 
                   {/* Date & Time Picker */}
                   <div>
-                    <label className="block text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-1.5 flex items-center gap-1">
+                    <label className="block text-[11px] font-bold text-slate-400 tracking-wider mb-1.5 flex items-center gap-1">
                       <Calendar className="h-3 w-3" /> Tanggal & Waktu Penimbangan
                     </label>
                     <input
@@ -1868,13 +1858,13 @@ export default function App() {
                       value={weightDate}
                       readOnly
                       required
-                      className="w-full rounded-xl border border-slate-200 px-3.5 py-2.5 text-xs outline-none bg-slate-100 text-slate-400 dark:bg-slate-800 dark:border-slate-800 font-mono cursor-not-allowed select-none"
+                      className="w-full rounded-xl border border-slate-200 dark:border-slate-700 px-3.5 py-2.5 text-xs outline-none bg-slate-100 dark:bg-slate-800 text-slate-400 dark:bg-slate-800 dark:border-slate-800 font-mono cursor-not-allowed select-none"
                     />
                   </div>
 
                   {/* Notes */}
                   <div>
-                    <label className="block text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-1.5">
+                    <label className="block text-[11px] font-bold text-slate-400 tracking-wider mb-1.5">
                       Catatan (Contoh: pagi sebelum sarapan, malam sehabis makan)
                     </label>
                     <textarea
@@ -1883,7 +1873,7 @@ export default function App() {
                       onChange={(e) => setWeightNotes(e.target.value)}
                       maxLength={150}
                       rows={2}
-                      className="w-full rounded-xl border border-slate-200 p-3 text-xs outline-none bg-slate-50 focus:bg-white focus:border-amber-500 focus:ring-4 focus:ring-amber-100/30 transition-all text-slate-600"
+                      className="w-full rounded-xl border border-slate-200 dark:border-slate-700 p-3 text-xs outline-none bg-slate-50 dark:bg-slate-900/50 focus:bg-white dark:focus:bg-slate-800 focus:border-amber-500 dark:focus:border-amber-400 focus:ring-4 focus:ring-amber-100/30 dark:focus:ring-amber-900/30 transition-all text-slate-600 dark:text-slate-300"
                     />
                   </div>
 
@@ -1909,7 +1899,7 @@ export default function App() {
             </div>
             
             {/* Database mode advice footer */}
-            <div className="border-t border-slate-100 mt-5 pt-3.5 flex items-center justify-between text-[10px] text-slate-400 font-bold tracking-wider uppercase">
+            <div className="border-t border-slate-100 mt-5 pt-3.5 flex items-center justify-between text-[10px] text-slate-400 font-bold tracking-wider">
               <span>Status Penyimpanan</span>
               <span>{isDemo ? 'Offline Terenkripsi Lokal' : 'Tersinkron di Awan'}</span>
             </div>
@@ -1942,12 +1932,12 @@ export default function App() {
                     placeholder="Cari catatan..."
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
-                    className="w-full rounded-xl border border-slate-200 dark:border-slate-700 pl-9 pr-4 py-2 text-xs outline-none focus:border-indigo-500 dark:focus:border-indigo-400 bg-slate-50/50 dark:bg-slate-900/50 focus:bg-white dark:focus:bg-slate-800 text-slate-700 dark:text-slate-200 transition-all font-medium"
+                    className="w-full rounded-xl border border-slate-200 dark:border-slate-700 pl-9 pr-4 py-2 text-xs outline-none focus:border-indigo-500 dark:focus:border-indigo-400 bg-slate-50 dark:bg-slate-900/50 focus:bg-white dark:focus:bg-slate-800 dark:focus:bg-slate-800 text-slate-700 dark:text-slate-200 transition-all font-medium"
                   />
                 </div>
 
                 {/* Type Filter */}
-                <div className="flex bg-slate-100/80 dark:bg-slate-800/80 rounded-xl p-1 border border-slate-200/50 dark:border-slate-700/50 shrink-0">
+                <div className="flex bg-slate-100 dark:bg-slate-800/80 dark:bg-slate-800/80 rounded-xl p-1 border border-slate-200 dark:border-slate-700/50 dark:border-slate-700/50 shrink-0">
                   <button
                     type="button"
                     onClick={() => setLogFilter('all')}
@@ -1984,7 +1974,7 @@ export default function App() {
                       type="button"
                       onClick={exportLocalData}
                       title="Unduh Cadangan JSON Lokal"
-                      className="p-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 text-xs font-bold transition-all flex items-center gap-1.5 active:scale-95 shrink-0 cursor-pointer"
+                      className="p-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl hover:bg-slate-100 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 text-xs font-bold transition-all flex items-center gap-1.5 active:scale-95 shrink-0 cursor-pointer"
                     >
                       <Download className="h-4 w-4" />
                       <span className="hidden sm:inline">Ekspor JSON</span>
@@ -2013,10 +2003,10 @@ export default function App() {
             </div>
 
             {/* Table list representation */}
-            <div className="overflow-x-auto border border-slate-200/80 dark:border-slate-800/80 rounded-2xl bg-white/50 dark:bg-slate-900/50">
+            <div className="overflow-x-auto border border-slate-200 dark:border-slate-700/80 dark:border-slate-800/80 rounded-2xl bg-white/50 dark:bg-slate-900/50">
               <table className="w-full text-left border-collapse text-xs">
                 <thead>
-                  <tr className="bg-slate-50 dark:bg-slate-800/60 border-b border-slate-200/80 dark:border-slate-850 font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider text-[10px]">
+                  <tr className="bg-slate-50 dark:bg-slate-800/60 border-b border-slate-200 dark:border-slate-700/80 dark:border-slate-850 font-bold text-slate-500 dark:text-slate-400 tracking-wider text-[10px]">
                     <th className="px-5 py-3.5">Tanggal & Waktu</th>
                     <th className="px-5 py-3.5">Jenis Rekaman</th>
                     <th className="px-5 py-3.5">Hasil Pengukuran</th>
@@ -2028,7 +2018,7 @@ export default function App() {
                 <tbody className="divide-y divide-slate-100 dark:divide-slate-800/60">
                   {logsToShow.length === 0 ? (
                     <tr>
-                      <td colSpan={6} className="text-center py-12 text-slate-400 dark:text-slate-500 italic">
+                      <td colSpan={6} className="text-center py-12 text-slate-400 dark:text-slate-500 dark:text-slate-400 italic">
                         Tidak ditemukan riwayat rekam medis harian yang sesuai.
                       </td>
                     </tr>
@@ -2046,11 +2036,11 @@ export default function App() {
                       });
 
                       return (
-                        <tr key={item.id} className="hover:bg-slate-50/55 dark:hover:bg-slate-800/30 transition-colors">
+                        <tr key={item.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/30 transition-colors">
                           {/* Date/Time */}
                           <td className="px-5 py-3.5">
                             <p className="font-bold text-slate-700 dark:text-slate-200">{localTimeStr}</p>
-                            <p className="text-[10px] text-slate-400 dark:text-slate-500 font-semibold font-mono mt-0.5">{hourStr}</p>
+                            <p className="text-[10px] text-slate-400 dark:text-slate-500 dark:text-slate-400 font-semibold font-mono mt-0.5">{hourStr}</p>
                           </td>
 
                           {/* Type indicator */}
@@ -2098,16 +2088,16 @@ export default function App() {
                                 );
                               })()
                             ) : (
-                              <span className="text-slate-400 dark:text-slate-500 italic text-[10px]">Lacak Mandiri</span>
+                              <span className="text-slate-400 dark:text-slate-500 dark:text-slate-400 italic text-[10px]">Lacak Mandiri</span>
                             )}
                           </td>
 
                           {/* Notes */}
                           <td className="px-5 py-3.5 max-w-[200px] truncate-3-lines">
                             {item.notes ? (
-                              <p className="text-slate-600 dark:text-slate-350 font-medium italic">"{item.notes}"</p>
+                              <p className="text-slate-600 dark:text-slate-300 dark:text-slate-350 font-medium italic">"{item.notes}"</p>
                             ) : (
-                              <span className="text-slate-350 dark:text-slate-600 italic">-</span>
+                              <span className="text-slate-350 dark:text-slate-600 dark:text-slate-300 italic">-</span>
                             )}
                           </td>
 
@@ -2121,7 +2111,7 @@ export default function App() {
                                   handleDeleteWeight(item.id);
                                 }
                               }}
-                              className="p-1.5 rounded-lg text-slate-400 dark:text-slate-500 hover:text-rose-600 dark:hover:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/20 transition-all active:scale-95 cursor-pointer"
+                              className="p-1.5 rounded-lg text-slate-400 dark:text-slate-500 dark:text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/20 transition-all active:scale-95 cursor-pointer"
                               title="Hapus rekaman medis ini"
                             >
                               <Trash2 className="h-4.5 w-4.5" />
@@ -2136,9 +2126,9 @@ export default function App() {
             </div>
 
             {/* Showing total indicator */}
-            <div className="mt-4 flex items-center justify-between text-[11px] text-slate-400 dark:text-slate-500 font-semibold font-mono">
-              <span>TOTAL {logsToShow.length} REKAMAN TERSEDIA</span>
-              <span>DI-FILTER BERDASARKAN PARAMETER SENSOR</span>
+            <div className="mt-4 flex items-center justify-between text-[11px] text-slate-400 dark:text-slate-500 dark:text-slate-400 font-semibold font-mono">
+              <span>Total {logsToShow.length} Rekaman Tersedia</span>
+              <span>Di-filter Berdasarkan Parameter Sensor</span>
             </div>
 
           </section>
@@ -2152,8 +2142,8 @@ export default function App() {
             <div className="lg:col-span-7 space-y-6">
               
               {/* Profile Config Card */}
-              <div className="bg-white rounded-3xl border border-slate-200 p-6 shadow-sm hover:border-slate-300 transition-all duration-200">
-                <h3 className="text-base font-extrabold text-slate-800 tracking-tight flex items-center gap-2 mb-4">
+              <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 p-6 shadow-sm hover:border-slate-300 transition-all duration-200">
+                <h3 className="text-base font-extrabold text-slate-800 dark:text-slate-100 tracking-tight flex items-center gap-2 mb-4">
                   <User className="h-5 w-5 text-indigo-600" />
                   Profil Pengguna
                 </h3>
@@ -2161,14 +2151,14 @@ export default function App() {
                 <form onSubmit={handleUpdateProfile} className="space-y-4">
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                     <div>
-                      <label className="block text-[11px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider mb-1.5">
+                      <label className="block text-[11px] font-bold text-slate-400 dark:text-slate-500 dark:text-slate-400 tracking-wider mb-1.5">
                         Nama Lengkap Anda
                       </label>
                       <input
                         type="text"
                         value={profileNameInput}
                         onChange={(e) => setProfileNameInput(e.target.value)}
-                        className="w-full rounded-xl border border-slate-200 dark:border-slate-700 px-3.5 py-2.5 text-xs outline-none bg-slate-50 dark:bg-slate-900 focus:bg-white dark:focus:bg-slate-800 focus:border-indigo-500 focus:ring-4 focus:ring-indigo-100/30 dark:focus:ring-indigo-950/30 transition-all font-semibold text-slate-700 dark:text-slate-200"
+                        className="w-full rounded-xl border border-slate-200 dark:border-slate-700 px-3.5 py-2.5 text-xs outline-none bg-slate-50 dark:bg-slate-900 focus:bg-white dark:focus:bg-slate-800 dark:focus:bg-slate-800 focus:border-indigo-500 dark:focus:border-indigo-400 focus:ring-4 focus:ring-indigo-100/30 dark:focus:ring-indigo-900/30 transition-all font-semibold text-slate-700 dark:text-slate-200"
                         placeholder="Nama Lengkap"
                         required
                         maxLength={30}
@@ -2176,7 +2166,7 @@ export default function App() {
                     </div>
 
                     <div>
-                      <label className="block text-[11px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider mb-1.5">
+                      <label className="block text-[11px] font-bold text-slate-400 dark:text-slate-500 dark:text-slate-400 tracking-wider mb-1.5">
                         Tinggi Badan (cm)
                       </label>
                       <input
@@ -2186,13 +2176,13 @@ export default function App() {
                         max="250"
                         value={heightInput}
                         onChange={(e) => setHeightInput(e.target.value)}
-                        className="w-full rounded-xl border border-slate-200 dark:border-slate-700 px-3.5 py-2.5 text-xs outline-none bg-slate-50 dark:bg-slate-900 focus:bg-white dark:focus:bg-slate-800 focus:border-indigo-500 focus:ring-4 focus:ring-indigo-100/30 dark:focus:ring-indigo-950/30 transition-all font-semibold text-slate-700 dark:text-slate-200"
+                        className="w-full rounded-xl border border-slate-200 dark:border-slate-700 px-3.5 py-2.5 text-xs outline-none bg-slate-50 dark:bg-slate-900 focus:bg-white dark:focus:bg-slate-800 dark:focus:bg-slate-800 focus:border-indigo-500 dark:focus:border-indigo-400 focus:ring-4 focus:ring-indigo-100/30 dark:focus:ring-indigo-900/30 transition-all font-semibold text-slate-700 dark:text-slate-200"
                         placeholder="Contoh: 170"
                       />
                     </div>
 
                     <div>
-                      <label className="block text-[11px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider mb-1.5">
+                      <label className="block text-[11px] font-bold text-slate-400 dark:text-slate-500 dark:text-slate-400 tracking-wider mb-1.5">
                         Target Berat Badan Anda (kg)
                       </label>
                       <input
@@ -2202,7 +2192,7 @@ export default function App() {
                         max="300"
                         value={targetWeightInput}
                         onChange={(e) => setTargetWeightInput(e.target.value)}
-                        className="w-full rounded-xl border border-slate-200 dark:border-slate-700 px-3.5 py-2.5 text-xs outline-none bg-slate-50 dark:bg-slate-900 focus:bg-white dark:focus:bg-slate-800 focus:border-indigo-500 focus:ring-4 focus:ring-indigo-100/30 dark:focus:ring-indigo-950/30 transition-all font-semibold text-slate-700 dark:text-slate-200"
+                        className="w-full rounded-xl border border-slate-200 dark:border-slate-700 px-3.5 py-2.5 text-xs outline-none bg-slate-50 dark:bg-slate-900 focus:bg-white dark:focus:bg-slate-800 dark:focus:bg-slate-800 focus:border-indigo-500 dark:focus:border-indigo-400 focus:ring-4 focus:ring-indigo-100/30 dark:focus:ring-indigo-900/30 transition-all font-semibold text-slate-700 dark:text-slate-200"
                         placeholder="Contoh: 68.0"
                       />
                     </div>
@@ -2220,9 +2210,9 @@ export default function App() {
               </div>
 
               {/* Database Connection Card */}
-              <div className="bg-white rounded-3xl border border-slate-200 p-6 shadow-sm hover:border-slate-300 transition-all duration-200">
+              <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 p-6 shadow-sm hover:border-slate-300 transition-all duration-200">
                 <div className="flex items-center justify-between mb-4">
-                  <h3 className="text-base font-extrabold text-slate-800 tracking-tight flex items-center gap-2">
+                  <h3 className="text-base font-extrabold text-slate-800 dark:text-slate-100 tracking-tight flex items-center gap-2">
                     <Database className="h-5 w-5 text-indigo-600" />
                     Penyimpanan & Koneksi Supabase
                   </h3>
@@ -2235,7 +2225,7 @@ export default function App() {
                 </div>
 
                 {/* Info block */}
-                <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-900 border border-slate-150 dark:border-slate-800 text-slate-600 dark:text-slate-400 text-xs leading-relaxed mb-5">
+                <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-900 border border-slate-150 dark:border-slate-800 text-slate-600 dark:text-slate-300 dark:text-slate-400 text-xs leading-relaxed mb-5">
                   <p>
                     <strong>Tersambung ke Supabase Cloud.</strong> Data rekam medis Anda otomatis tersinkronisasi aman dan terenkripsi. Aturan Keamanan RLS (Row Level Security) aktif melindungi data pribadi Anda.
                   </p>
@@ -2246,7 +2236,7 @@ export default function App() {
 
                   {/* Supabase URL */}
                   <div>
-                    <label className="block text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-1.5">
+                    <label className="block text-[11px] font-bold text-slate-400 tracking-wider mb-1.5">
                       Supabase Project URL
                     </label>
                     <input
@@ -2258,13 +2248,13 @@ export default function App() {
                         const newUrl = e.target.value.trim();
                         setCreds(prev => ({ ...prev, url: newUrl }));
                       }}
-                      className="w-full rounded-xl border border-slate-200 px-3.5 py-2.5 text-xs outline-none bg-slate-50 focus:bg-white focus:border-indigo-500 focus:ring-4 focus:ring-indigo-100/30 disabled:opacity-50 disabled:bg-slate-100 font-mono text-slate-700 transition-all"
+                      className="w-full rounded-xl border border-slate-200 dark:border-slate-700 px-3.5 py-2.5 text-xs outline-none bg-slate-50 dark:bg-slate-900/50 focus:bg-white dark:focus:bg-slate-800 focus:border-indigo-500 dark:focus:border-indigo-400 focus:ring-4 focus:ring-indigo-100/30 dark:focus:ring-indigo-900/30 disabled:opacity-50 disabled:bg-slate-100 dark:bg-slate-800 font-mono text-slate-700 dark:text-slate-200 transition-all"
                     />
                   </div>
 
                   {/* Supabase Anon Key */}
                   <div>
-                    <label className="block text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-1.5">
+                    <label className="block text-[11px] font-bold text-slate-400 tracking-wider mb-1.5">
                       Supabase Anon API Key
                     </label>
                     <input
@@ -2276,7 +2266,7 @@ export default function App() {
                         const newKey = e.target.value.trim();
                         setCreds(prev => ({ ...prev, anonKey: newKey }));
                       }}
-                      className="w-full rounded-xl border border-slate-200 px-3.5 py-2.5 text-xs outline-none bg-slate-50 focus:bg-white focus:border-indigo-500 focus:ring-4 focus:ring-indigo-100/30 disabled:opacity-50 disabled:bg-slate-100 font-mono text-slate-700 transition-all"
+                      className="w-full rounded-xl border border-slate-200 dark:border-slate-700 px-3.5 py-2.5 text-xs outline-none bg-slate-50 dark:bg-slate-900/50 focus:bg-white dark:focus:bg-slate-800 focus:border-indigo-500 dark:focus:border-indigo-400 focus:ring-4 focus:ring-indigo-100/30 dark:focus:ring-indigo-900/30 disabled:opacity-50 disabled:bg-slate-100 dark:bg-slate-800 font-mono text-slate-700 dark:text-slate-200 transition-all"
                     />
                   </div>
 
@@ -2293,7 +2283,7 @@ export default function App() {
                     <button
                       type="button"
                       onClick={handleResetConfig}
-                      className="px-4 py-2.5 border border-slate-200 hover:bg-slate-50 text-slate-600 font-semibold text-xs rounded-xl transition-all cursor-pointer"
+                      className="px-4 py-2.5 border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-900/50 text-slate-600 dark:text-slate-300 font-semibold text-xs rounded-xl transition-all cursor-pointer"
                     >
                       Reset Koneksi
                     </button>
@@ -2307,8 +2297,8 @@ export default function App() {
             <div className="lg:col-span-5 space-y-6">
               
               {/* Backups & Actions */}
-              <div className="bg-white rounded-3xl border border-slate-200 p-6 shadow-sm hover:border-slate-300 transition-all duration-200">
-                <h3 className="text-base font-extrabold text-slate-800 tracking-tight flex items-center gap-2 mb-4">
+              <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 p-6 shadow-sm hover:border-slate-300 transition-all duration-200">
+                <h3 className="text-base font-extrabold text-slate-800 dark:text-slate-100 tracking-tight flex items-center gap-2 mb-4">
                   <SlidersHorizontal className="h-5 w-5 text-indigo-600" />
                   Tindakan Pencadangan & Reset
                 </h3>
@@ -2317,7 +2307,7 @@ export default function App() {
                   <button
                     type="button"
                     onClick={exportLocalData}
-                    className="w-full p-3 bg-slate-50 hover:bg-slate-100 border border-slate-200 text-slate-700 rounded-xl text-xs font-bold transition-all flex items-center justify-between active:scale-98 cursor-pointer"
+                    className="w-full p-3 bg-slate-50 dark:bg-slate-900/50 hover:bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 rounded-xl text-xs font-bold transition-all flex items-center justify-between active:scale-98 cursor-pointer"
                   >
                     <span className="flex items-center gap-2">
                       <Download className="h-4 w-4 text-indigo-600" /> Ekspor Seluruh Data ke JSON
@@ -2348,19 +2338,19 @@ export default function App() {
               </div>
 
               {/* CSV Import/Export Card */}
-              <div className="bg-white rounded-3xl border border-slate-200 p-6 shadow-sm hover:border-slate-300 transition-all duration-200">
-                <h3 className="text-base font-extrabold text-slate-800 tracking-tight flex items-center gap-2 mb-2">
+              <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 p-6 shadow-sm hover:border-slate-300 transition-all duration-200">
+                <h3 className="text-base font-extrabold text-slate-800 dark:text-slate-100 tracking-tight flex items-center gap-2 mb-2">
                   <FileText className="h-5 w-5 text-indigo-600" />
                   Ekspor & Impor Data (CSV)
                 </h3>
-                <p className="text-[11px] text-slate-500 mb-4 leading-normal">
+                <p className="text-[11px] text-slate-500 dark:text-slate-400 mb-4 leading-normal">
                   Ekspor data Anda ke format CSV standar untuk dianalisis di Excel atau Google Sheets, atau impor data dari file CSV yang sudah ada.
                 </p>
 
                 <div className="space-y-4">
                   {/* Export Sub-Section */}
                   <div>
-                    <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">Ekspor Riwayat</h4>
+                    <h4 className="text-[10px] font-bold text-slate-400 tracking-wider mb-2">Ekspor Riwayat</h4>
                     <div className="grid grid-cols-2 gap-2">
                       <button
                         type="button"
@@ -2383,7 +2373,7 @@ export default function App() {
 
                   {/* Import Sub-Section */}
                   <div>
-                    <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">Impor dari CSV</h4>
+                    <h4 className="text-[10px] font-bold text-slate-400 tracking-wider mb-2">Impor dari CSV</h4>
                     <div
                       onDragOver={(e) => {
                         e.preventDefault();
@@ -2409,7 +2399,7 @@ export default function App() {
                       className={`border-2 border-dashed rounded-2xl p-5 flex flex-col items-center justify-center text-center cursor-pointer transition-all ${
                         isDragging
                           ? 'border-indigo-500 bg-indigo-50/40 text-indigo-700'
-                          : 'border-slate-200 bg-slate-50 hover:bg-slate-100 hover:border-slate-300 text-slate-500'
+                          : 'border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900/50 hover:bg-slate-100 dark:bg-slate-800 hover:border-slate-300 text-slate-500 dark:text-slate-400'
                       }`}
                     >
                       <input
@@ -2431,7 +2421,7 @@ export default function App() {
                       <p className="text-[10px] text-slate-400 mt-1">
                         atau klik untuk memilih file dari komputer Anda
                       </p>
-                      <div className="mt-3 p-1.5 bg-slate-100 rounded-lg text-[9px] text-slate-400 text-left font-mono w-full">
+                      <div className="mt-3 p-1.5 bg-slate-100 dark:bg-slate-800 rounded-lg text-[9px] text-slate-400 text-left font-mono w-full">
                         <p className="font-bold mb-0.5 text-center">Format kolom didukung:</p>
                         <p>• Tensi: Tanggal, Sistolik, Diastolik, Nadi, Catatan</p>
                         <p>• Berat: Tanggal, Berat Badan, Catatan</p>
@@ -2442,9 +2432,9 @@ export default function App() {
               </div>
 
               {/* Database Schema Setup Card */}
-              <div className="bg-white rounded-3xl border border-slate-200 p-6 shadow-sm hover:border-slate-300 transition-all duration-200">
+              <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 p-6 shadow-sm hover:border-slate-300 transition-all duration-200">
                 <div className="flex items-center justify-between mb-3">
-                  <h3 className="text-sm font-extrabold text-slate-800 tracking-tight flex items-center gap-1.5">
+                  <h3 className="text-sm font-extrabold text-slate-800 dark:text-slate-100 tracking-tight flex items-center gap-1.5">
                     <Database className="h-4 w-4 text-indigo-600" />
                     Skema SQL Supabase
                   </h3>
@@ -2462,7 +2452,7 @@ export default function App() {
                   </button>
                 </div>
 
-                <p className="text-[11px] text-slate-500 leading-normal mb-3">
+                <p className="text-[11px] text-slate-500 dark:text-slate-400 leading-normal mb-3">
                   Salin kode di bawah ini lalu jalankan di menu <strong>SQL Editor</strong> di dalam dasbor proyek Supabase Anda untuk membuat tabel otomatis dengan izin RLS yang aman:
                 </p>
 

@@ -102,7 +102,7 @@ export default function MonthlyTrendPieChart({ data }: MonthlyTrendPieChartProps
   };
 
   return (
-    <div className="grid grid-cols-1 md:grid-cols-12 gap-6 items-center bg-white p-2 rounded-xl">
+    <div className="grid grid-cols-1 md:grid-cols-12 gap-6 items-center bg-white dark:bg-slate-900 p-2 rounded-xl">
       {monthlyLogs.length === 0 ? (
         <div className="col-span-12 flex h-[200px] items-center justify-center flex-col text-slate-400 py-6">
           <p className="text-sm font-medium">Belum ada data tensi 30 hari terakhir</p>
@@ -133,14 +133,14 @@ export default function MonthlyTrendPieChart({ data }: MonthlyTrendPieChartProps
             
             {/* Center Summary Text */}
             <div className="absolute flex flex-col items-center justify-center">
-              <span className="text-3xl font-extrabold text-slate-800 font-mono">{total}</span>
-              <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Log Tensi</span>
+              <span className="text-3xl font-extrabold text-slate-800 dark:text-slate-100 font-mono">{total}</span>
+              <span className="text-[10px] font-semibold text-slate-400 tracking-wider">Log Tensi</span>
             </div>
           </div>
 
           {/* Chart Details List (Col 7) */}
           <div className="col-span-12 md:col-span-7 space-y-2">
-            <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Penyebaran Kategori (30 Hari Terakhir)</h4>
+            <h4 className="text-xs font-bold text-slate-400 tracking-wider mb-2">Penyebaran Kategori (30 Hari Terakhir)</h4>
             <div className="space-y-2 max-h-[160px] overflow-y-auto pr-1">
               {Object.entries(categoryMetadata).map(([category, meta]) => {
                 const count = counts[category as BPCategory];
@@ -151,20 +151,20 @@ export default function MonthlyTrendPieChart({ data }: MonthlyTrendPieChartProps
                     key={category} 
                     className={`flex items-center justify-between p-2 rounded-lg border transition-all ${
                       count > 0 
-                        ? 'bg-slate-50 border-slate-100 hover:shadow-xs' 
+                        ? 'bg-slate-50 dark:bg-slate-800/50 border-slate-100 dark:border-slate-800 hover:shadow-xs' 
                         : 'opacity-40 border-transparent'
                     }`}
                   >
                     <div className="flex items-center gap-2">
                       <span className="h-3 w-3 rounded-full shrink-0" style={{ backgroundColor: meta.color }}></span>
                       <div>
-                        <p className="text-xs font-bold text-slate-700">{meta.label}</p>
+                        <p className="text-xs font-bold text-slate-700 dark:text-slate-200">{meta.label}</p>
                         <p className="text-[9px] text-slate-400 font-mono hidden sm:block">{meta.desc}</p>
                       </div>
                     </div>
                     <div className="text-right flex items-center gap-2">
-                      <span className="text-xs font-bold text-slate-800 font-mono">{count} kali</span>
-                      <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-sm bg-slate-150 text-slate-600 font-mono shrink-0 min-w-[34px] text-center">
+                      <span className="text-xs font-bold text-slate-800 dark:text-slate-100 font-mono">{count} kali</span>
+                      <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-sm bg-slate-150 dark:bg-slate-800 text-slate-600 dark:text-slate-300 font-mono shrink-0 min-w-[34px] text-center">
                         {percentage}%
                       </span>
                     </div>

@@ -58,7 +58,7 @@ export default function BloodPressureChart({ data }: BloodPressureChartProps) {
   };
 
   return (
-    <div className="w-full h-[320px] bg-white rounded-xl">
+    <div className="w-full h-[320px] bg-white dark:bg-slate-900 rounded-xl">
       {formattedData.length === 0 ? (
         <div className="flex h-full items-center justify-center flex-col text-slate-400 py-12">
           <p className="text-sm font-medium">Belum ada data tensi untuk digambarkan</p>

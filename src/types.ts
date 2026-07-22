@@ -33,3 +33,10 @@ export interface MonthlyTrendData {
   value: number;
   color: string;
 }
+
+export interface AITipLog {
+  id: string;
+  tip: string;
+  focus: string;
+  created_at: string;
+}
