@@ -28,15 +28,12 @@ import {
   Plus,
   Trash2,
   Database,
-  LogOut,
   Calendar,
   AlertTriangle,
   CheckCircle,
   FileText,
   Search,
   SlidersHorizontal,
-  Info,
-  ChevronDown,
   Download,
   Upload,
   User,
@@ -133,7 +130,6 @@ const generateLocalTip = (
   }
 
   if (weight) {
-    const w = Number(weight.weight);
     const tips = [
       {
         tip: "Konsumsi buah segar atau segelas air sebelum makan besar dapat membantu Anda merasa lebih kenyang dan mengontrol porsi makan harian dengan lebih bijak.",
@@ -184,7 +180,7 @@ export default function App() {
   const [trendPeriod, setTrendPeriod] = useState<"monthly" | "yearly">(
     "monthly"
   );
-  const [isLoading, setIsLoading] = useState(false);
+  const [isLoading] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
   const [isOffline, setIsOffline] = useState(!navigator.onLine);
   const [isDragging, setIsDragging] = useState(false);
@@ -233,7 +229,7 @@ export default function App() {
   const [profileNameInput, setProfileNameInput] = useState("");
   const [targetWeightInput, setTargetWeightInput] = useState("");
   const [heightInput, setHeightInput] = useState("");
-  const [isEditingProfile, setIsEditingProfile] = useState(false);
+  const [, setIsEditingProfile] = useState(false);
   const [isDark, setIsDark] = useState(
     () => localStorage.getItem("bp_dark_mode") === "true"
   );
@@ -312,7 +308,7 @@ export default function App() {
       }
 
       const data = await response.json();
-      const newTip = localDb.saveAITip(data.tip, data.focus);
+      localDb.saveAITip(data.tip, data.focus);
       setAiTipsHistory(localDb.getAITips());
     } catch (err: any) {
       console.warn(
@@ -321,10 +317,7 @@ export default function App() {
       );
       // Fallback seamlessly to local smart rules generator
       const localTipData = generateLocalTip(activeBP, activeWeight);
-      const newTip = localDb.saveAITip(
-        localTipData.tip,
-        `${localTipData.focus} (Lokal)`
-      );
+      localDb.saveAITip(localTipData.tip, `${localTipData.focus} (Lokal)`);
       setAiTipsHistory(localDb.getAITips());
     } finally {
       setIsGeneratingTip(false);
@@ -602,7 +595,7 @@ export default function App() {
   };
 
   // Handle configuration changes
-  const handleSaveConfig = (url: string, key: string, useDemoMode: boolean) => {
+  const handleSaveConfig = (url: string, key: string) => {
     const activeClient = updateSupabaseClient(url, key);
     setCreds(getSavedCredentials());
 
@@ -2487,9 +2480,7 @@ export default function App() {
                     <button
                       type="button"
                       disabled={isDemo}
-                      onClick={() =>
-                        handleSaveConfig(creds.url, creds.anonKey, false)
-                      }
+                      onClick={() => handleSaveConfig(creds.url, creds.anonKey)}
                       className="flex-1 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs rounded-xl shadow-md shadow-indigo-100 transition-all active:scale-[0.98] disabled:opacity-50 disabled:pointer-events-none cursor-pointer"
                     >
                       Hubungkan ke Supabase Cloud
@@ -2720,8 +2711,6 @@ export default function App() {
         onClose={() => setIsConfigOpen(false)}
         url={creds.url}
         anonKey={creds.anonKey}
-        isEnv={creds.isEnv}
-        isDemo={isDemo}
         onSave={handleSaveConfig}
         onReset={handleResetConfig}
       />
