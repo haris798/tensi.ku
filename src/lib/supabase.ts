@@ -68,32 +68,19 @@ export function clearSavedCredentials() {
 // SQL helper for database setup that we will present in the UI
 export const SUPABASE_SQL_SETUP = `-- Script SQL untuk di-copy paste di Supabase SQL Editor Anda
 
--- 1. Buat tabel profiles (opsional, untuk nama lengkap)
+-- 1. Buat tabel profiles (tanpa auth.users)
 CREATE TABLE IF NOT EXISTS public.profiles (
-  id UUID REFERENCES auth.users ON DELETE CASCADE PRIMARY KEY,
-  full_name TEXT,
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  full_name TEXT UNIQUE,
   target_weight NUMERIC(5,2),
   height NUMERIC(5,2),
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now())
 );
 
--- Jalankan Row-Level Security (RLS) di profiles
-ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
-
-CREATE POLICY "Pengguna bisa membaca profil mereka sendiri" 
-  ON public.profiles FOR SELECT USING (auth.uid() = id);
-
-CREATE POLICY "Pengguna bisa memperbarui profil mereka sendiri" 
-  ON public.profiles FOR UPDATE USING (auth.uid() = id);
-
-CREATE POLICY "Pengguna bisa membuat profil mereka sendiri" 
-  ON public.profiles FOR INSERT WITH CHECK (auth.uid() = id);
-
-
 -- 2. Buat tabel blood_pressure_logs
 CREATE TABLE IF NOT EXISTS public.blood_pressure_logs (
   id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
-  user_id UUID REFERENCES auth.users ON DELETE CASCADE NOT null,
+  user_id UUID REFERENCES public.profiles(id) ON DELETE CASCADE NOT null,
   systolic INTEGER NOT null,
   diastolic INTEGER NOT null,
   pulse INTEGER NOT null,
@@ -102,43 +89,13 @@ CREATE TABLE IF NOT EXISTS public.blood_pressure_logs (
   created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT null
 );
 
--- Jalankan RLS di blood_pressure_logs
-ALTER TABLE public.blood_pressure_logs ENABLE ROW LEVEL SECURITY;
-
-CREATE POLICY "Pengguna bisa mengelola tensi mereka" 
-  ON public.blood_pressure_logs 
-  ALL USING (auth.uid() = user_id);
-
-
 -- 3. Buat tabel weight_logs
 CREATE TABLE IF NOT EXISTS public.weight_logs (
   id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
-  user_id UUID REFERENCES auth.users ON DELETE CASCADE NOT null,
+  user_id UUID REFERENCES public.profiles(id) ON DELETE CASCADE NOT null,
   weight NUMERIC(5,2) NOT null,
   logged_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT null,
   notes TEXT,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT null
 );
-
--- Jalankan RLS di weight_logs
-ALTER TABLE public.weight_logs ENABLE ROW LEVEL SECURITY;
-
-CREATE POLICY "Pengguna bisa mengelola berat badan mereka" 
-  ON public.weight_logs 
-  ALL USING (auth.uid() = user_id);
-
-
--- 4. Trigger otomatis saat user mendaftar untuk membuat record profile
-CREATE OR REPLACE FUNCTION public.handle_new_user()
-RETURNS TRIGGER AS $$
-BEGIN
-  INSERT INTO public.profiles (id, full_name)
-  VALUES (new.id, COALESCE(new.raw_user_meta_data->>'full_name', 'Pengguna'));
-  RETURN NEW;
-END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
-
-CREATE OR REPLACE TRIGGER on_auth_user_created
-  AFTER INSERT ON auth.users
-  FOR EACH ROW EXECUTE FUNCTION public.handle_new_user();
 `;

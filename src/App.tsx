@@ -110,7 +110,6 @@ export default function App() {
   const [creds, setCreds] = useState(getSavedCredentials());
   const [isDemo, setIsDemo] = useState(false);
 
-  const [session, setSession] = useState<any>(null);
   const [profile, setProfile] = useState<UserProfile>(() => localDb.getProfile());
   const [bpLogs, setBpLogs] = useState<BloodPressureLog[]>(() => localDb.getBPLogs());
   const [weightLogs, setWeightLogs] = useState<WeightLog[]>(() => localDb.getWeightLogs());
@@ -300,18 +299,36 @@ export default function App() {
 
     setIsSyncing(true);
     try {
-      let currentSession = (await supabase.auth.getSession()).data.session;
-      if (!currentSession) {
-        try {
-          const { data } = await supabase.auth.signInAnonymously();
-          currentSession = data.session;
-        } catch {
-          // If anonymous sign in is disabled or fails, proceed without blocking
+      const currentFullName = profile?.full_name || 'Pengguna';
+      let userId = undefined;
+
+      const { data: existingProfile, error: searchErr } = await supabase
+        .from('profiles')
+        .select('id')
+        .eq('full_name', currentFullName)
+        .maybeSingle();
+
+      if (existingProfile) {
+        userId = existingProfile.id;
+      } else if (!searchErr) {
+        const { data: newProfile, error: insertErr } = await supabase
+          .from('profiles')
+          .insert({ 
+            full_name: currentFullName, 
+            height: profile?.height || null, 
+            target_weight: profile?.target_weight || null 
+          })
+          .select('id')
+          .single();
+          
+        if (newProfile) {
+          userId = newProfile.id;
+        } else {
+          console.warn('Could not create profile:', insertErr);
         }
       }
 
-      if (currentSession?.user?.id) {
-        const userId = currentSession.user.id;
+      if (userId) {
         syncEngine.setLastUserId(userId);
 
         // 1. Process offline sync queue
@@ -349,6 +366,16 @@ export default function App() {
 
     try {
       const updated = localDb.saveProfile(profileNameInput.trim(), parsedTargetWeight, parsedHeight);
+      
+      // If connected to Supabase, update remotely using sync engine
+      if (supabase && !isOffline) {
+        const userId = syncEngine.getLastUserId();
+        if (userId) {
+          syncEngine.localUpdateProfile(userId, profileNameInput.trim(), parsedTargetWeight, parsedHeight);
+          // Optional: trigger background sync to flush the queue
+          setTimeout(handleBackgroundSync, 500);
+        }
+      }
       setProfile(updated);
       showSuccessAlert('Profil berhasil diperbarui!');
       setIsEditingProfile(false);
@@ -480,18 +507,7 @@ export default function App() {
     showSuccessAlert('Konfigurasi sambungan berhasil di-reset.');
   };
 
-  const handleLogout = async () => {
-    if (supabase) {
-      const { error } = await supabase.auth.signOut();
-      if (error) {
-        alert('Gagal keluar: ' + error.message);
-      } else {
-        setSession(null);
-        showSuccessAlert('Berhasil keluar dari akun Supabase.');
-      }
-    }
-  };
-
+  
   const showSuccessAlert = (msg: string) => {
     setActionSuccess(msg);
     setTimeout(() => setActionSuccess(null), 3500);
