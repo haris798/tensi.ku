@@ -52,7 +52,7 @@ app.post("/api/gemini/health-tips", async (req, res) => {
 
     // Prompt Gemini for one short personalized health tip
     const response = await ai.models.generateContent({
-      model: "gemini-3.5-flash",
+      model: "gemini-3.6-flash",
       contents: `Berikan satu tips kesehatan harian singkat, praktis, ramah, dan dipersonalisasi berdasarkan data medis pengguna berikut dalam bahasa Indonesia.
 Tips harus fokus pada tensi darah atau berat badan yang tercatat, berikan anjuran diet ringan atau gaya hidup sehat dalam 1-2 kalimat pendek yang memotivasi. Jangan terlalu panjang atau teoritis.
 
@@ -96,7 +96,13 @@ ${context}`,
     const result = JSON.parse(text.trim());
     res.json(result);
   } catch (error: any) {
-    console.warn("Gemini Health Tips Warning (Fallback triggered):", error?.message || error);
+    let errMsg = "API Error";
+    if (error?.message) {
+      errMsg = error.message;
+    } else if (error?.error?.message) {
+      errMsg = error.error.message;
+    }
+    console.warn(`Gemini Health Tips Warning (Fallback triggered): ${errMsg}`);
     res.status(503).json({ 
       error: "Gagal menghasilkan tips kesehatan AI, menggunakan fallback lokal." 
     });

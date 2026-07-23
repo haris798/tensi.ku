@@ -111,9 +111,9 @@ const DUMMY_WEIGHT_LOGS: WeightLog[] = [
 
 const DUMMY_PROFILE: UserProfile = {
   id: 'local-user',
-  full_name: 'Budi Santoso (Demo)',
-  target_weight: 68.0,
-  height: 170.0,
+  full_name: 'Haris',
+  target_weight: 75.0,
+  height: 172.0,
   updated_at: new Date().toISOString()
 };
 
@@ -122,7 +122,7 @@ const KEYS = {
   BP: 'local_bp_logs_v1',
   WEIGHT: 'local_weight_logs_v1',
   PROFILE: 'local_profile_v1',
-  HAS_SEEDED: 'local_has_seeded_v1',
+  HAS_SEEDED: 'local_has_seeded_v2',
   AI_TIPS: 'local_ai_tips_v1'
 };
 

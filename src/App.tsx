@@ -506,14 +506,14 @@ export default function App() {
     }
 
     try {
-      localDb.saveBPLog(
-        sys,
-        dia,
-        pulse,
-        new Date(bpDate).toISOString(),
-        bpNotes
-      );
-      setBpLogs(localDb.getBPLogs());
+      const userId = syncEngine.getLastUserId();
+      if (supabase && userId) {
+        syncEngine.localAddBP(userId, sys, dia, pulse, new Date(bpDate).toISOString(), bpNotes);
+        setBpLogs(syncEngine.getCachedBP(userId));
+      } else {
+        localDb.saveBPLog(sys, dia, pulse, new Date(bpDate).toISOString(), bpNotes);
+        setBpLogs(localDb.getBPLogs());
+      }
       showSuccessAlert("Catatan tensi berhasil disimpan!");
 
       setSysInput("");
@@ -544,8 +544,14 @@ export default function App() {
     }
 
     try {
-      localDb.saveWeightLog(w, new Date(weightDate).toISOString(), weightNotes);
-      setWeightLogs(localDb.getWeightLogs());
+      const userId = syncEngine.getLastUserId();
+      if (supabase && userId) {
+        syncEngine.localAddWeight(userId, w, new Date(weightDate).toISOString(), weightNotes);
+        setWeightLogs(syncEngine.getCachedWeight(userId));
+      } else {
+        localDb.saveWeightLog(w, new Date(weightDate).toISOString(), weightNotes);
+        setWeightLogs(localDb.getWeightLogs());
+      }
       showSuccessAlert("Catatan berat badan berhasil disimpan!");
 
       setWeightInput("");
@@ -566,8 +572,14 @@ export default function App() {
   // Delete Log
   const handleDeleteBP = async (id: string) => {
     try {
-      localDb.deleteBPLog(id);
-      setBpLogs(localDb.getBPLogs());
+      const userId = syncEngine.getLastUserId();
+      if (supabase && userId) {
+        syncEngine.localDeleteBP(userId, id);
+        setBpLogs(syncEngine.getCachedBP(userId));
+      } else {
+        localDb.deleteBPLog(id);
+        setBpLogs(localDb.getBPLogs());
+      }
       showSuccessAlert("Catatan tensi berhasil dihapus.");
 
       if (navigator.onLine && supabase) {
@@ -581,8 +593,14 @@ export default function App() {
 
   const handleDeleteWeight = async (id: string) => {
     try {
-      localDb.deleteWeightLog(id);
-      setWeightLogs(localDb.getWeightLogs());
+      const userId = syncEngine.getLastUserId();
+      if (supabase && userId) {
+        syncEngine.localDeleteWeight(userId, id);
+        setWeightLogs(syncEngine.getCachedWeight(userId));
+      } else {
+        localDb.deleteWeightLog(id);
+        setWeightLogs(localDb.getWeightLogs());
+      }
       showSuccessAlert("Catatan berat badan berhasil dihapus.");
 
       if (navigator.onLine && supabase) {
