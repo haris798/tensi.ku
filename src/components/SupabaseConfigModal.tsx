@@ -7,8 +7,10 @@ interface SupabaseConfigModalProps {
   onClose: () => void;
   url: string;
   anonKey: string;
+  email?: string;
+  password?: string;
 
-  onSave: (url: string, key: string, isDemo: boolean) => void;
+  onSave: (url: string, key: string, email?: string, password?: string) => void;
   onReset: () => void;
 }
 
@@ -17,12 +19,15 @@ export default function SupabaseConfigModal({
   onClose,
   url,
   anonKey,
-
+  email,
+  password,
   onSave,
   onReset,
 }: SupabaseConfigModalProps) {
   const [inputUrl, setInputUrl] = useState(url);
   const [inputKey, setInputKey] = useState(anonKey);
+  const [inputEmail, setInputEmail] = useState(email || "");
+  const [inputPassword, setInputPassword] = useState(password || "");
   const [isCopied, setIsCopied] = useState(false);
 
   if (!isOpen) return null;
@@ -39,7 +44,7 @@ export default function SupabaseConfigModal({
 
   const handleSaveSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    onSave(inputUrl.trim(), inputKey.trim(), false);
+    onSave(inputUrl.trim(), inputKey.trim(), inputEmail.trim(), inputPassword.trim());
     onClose();
   };
 
@@ -119,6 +124,31 @@ export default function SupabaseConfigModal({
                   Row-Level Security (RLS).
                 </span>
               </div>
+              <div>
+                <label className="block text-xs font-semibold text-slate-500 dark:text-slate-400 tracking-wider mb-1.5">
+                  Email
+                </label>
+                <input
+                  type="email"
+                  placeholder="user@example.com"
+                  value={inputEmail}
+                  onChange={(e) => setInputEmail(e.target.value)}
+                  className="w-full rounded-xl border border-slate-200 dark:border-slate-700 px-4 py-2.5 text-sm outline-none focus:border-indigo-500 dark:focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100 dark:focus:ring-indigo-900/30 transition-all font-mono"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-slate-500 dark:text-slate-400 tracking-wider mb-1.5">
+                  Password
+                </label>
+                <input
+                  type="password"
+                  placeholder="••••••••"
+                  value={inputPassword}
+                  onChange={(e) => setInputPassword(e.target.value)}
+                  className="w-full rounded-xl border border-slate-200 dark:border-slate-700 px-4 py-2.5 text-sm outline-none focus:border-indigo-500 dark:focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100 dark:focus:ring-indigo-900/30 transition-all font-mono"
+                />
+              </div>
+
             </div>
 
             <div className="flex gap-3 pt-2">

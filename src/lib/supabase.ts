@@ -8,9 +8,13 @@ export function getSavedCredentials() {
   const localUrl = localStorage.getItem('bp_supabase_url');
   const localKey = localStorage.getItem('bp_supabase_anon_key');
 
+  const localEmail = localStorage.getItem('bp_supabase_email');
+  const localPassword = localStorage.getItem('bp_supabase_password');
   return {
     url: localUrl || envUrl || '',
     anonKey: localKey || envKey || '',
+    email: localEmail || '',
+    password: localPassword || '',
     isEnv: !!(envUrl && envKey),
     isLocalSaved: !!(localUrl && localKey),
   };
@@ -35,10 +39,12 @@ if (creds.url && creds.anonKey) {
 
 export const supabase = supabaseInstance;
 
-export function updateSupabaseClient(url: string, anonKey: string): SupabaseClient | null {
+export function updateSupabaseClient(url: string, anonKey: string, email?: string, password?: string): SupabaseClient | null {
   if (!url || !anonKey) {
     localStorage.removeItem('bp_supabase_url');
     localStorage.removeItem('bp_supabase_anon_key');
+    localStorage.removeItem('bp_supabase_email');
+    localStorage.removeItem('bp_supabase_password');
     supabaseInstance = null;
     return null;
   }
@@ -46,6 +52,8 @@ export function updateSupabaseClient(url: string, anonKey: string): SupabaseClie
   try {
     localStorage.setItem('bp_supabase_url', url);
     localStorage.setItem('bp_supabase_anon_key', anonKey);
+    if (email) localStorage.setItem('bp_supabase_email', email);
+    if (password) localStorage.setItem('bp_supabase_password', password);
     supabaseInstance = createClient(url, anonKey, {
       auth: {
         persistSession: true,
@@ -60,6 +68,8 @@ export function updateSupabaseClient(url: string, anonKey: string): SupabaseClie
 }
 
 export function clearSavedCredentials() {
+  localStorage.removeItem('bp_supabase_email');
+  localStorage.removeItem('bp_supabase_password');
   localStorage.removeItem('bp_supabase_url');
   localStorage.removeItem('bp_supabase_anon_key');
   supabaseInstance = null;

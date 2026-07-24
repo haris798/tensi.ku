@@ -14,7 +14,7 @@ app.use(express.json());
 // Initialize Gemini SDK with User-Agent and key
 const apiKey = process.env.GEMINI_API_KEY;
 let ai: GoogleGenAI | null = null;
-if (apiKey) {
+if (apiKey && apiKey !== "MY_GEMINI_API_KEY" && apiKey.trim() !== "") {
   ai = new GoogleGenAI({
     apiKey: apiKey,
     httpOptions: {
