@@ -36,10 +36,9 @@ jobs:
       - name: Build web app
         run: bun run build
 
-      - name: Initialize Capacitor (if needed)
+      - name: Initialize Capacitor Android platform
         run: |
           if [ ! -d "android" ]; then
-            npx cap init tensi.ku com.tensiku.app --web-dir dist
             npx cap add android
           fi
 
