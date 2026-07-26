@@ -10,7 +10,8 @@
     "clean": "rm -rf dist server.js",
     "lint": "tsc --noEmit",
     "cap:sync": "npx cap sync",
-    "cap:build:android": "cd android && ./gradlew assembleDebug"
+    "cap:build:android": "cd android && ./gradlew assembleDebug",
+    "cap:assets": "npx capacitor-assets generate --iconBackgroundColor '#4f46e5' --iconBackgroundColorDark '#1e1b4b' --splashBackgroundColor '#4f46e5' --splashBackgroundColorDark '#0f172a'"
   },
   "dependencies": {
     "@capacitor/android": "^8.4.2",
