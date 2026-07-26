@@ -2,8 +2,8 @@ import { createClient, SupabaseClient } from '@supabase/supabase-js';
 
 // Get keys from environment variables or localStorage
 export function getSavedCredentials() {
-  const envUrl = (import.meta as any).env.VITE_SUPABASE_URL;
-  const envKey = (import.meta as any).env.VITE_SUPABASE_ANON_KEY;
+  const envUrl = (import.meta as any).env.VITE_SUPABASE_URL as string | undefined;
+  const envKey = (import.meta as any).env.VITE_SUPABASE_ANON_KEY as string | undefined;
 
   const localUrl = localStorage.getItem('bp_supabase_url');
   const localKey = localStorage.getItem('bp_supabase_anon_key');

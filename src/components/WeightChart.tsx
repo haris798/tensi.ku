@@ -7,15 +7,44 @@ import {
   CartesianGrid,
   Tooltip,
   ResponsiveContainer,
+  TooltipProps,
 } from 'recharts';
 
 interface WeightChartProps {
   data: WeightLog[];
 }
 
+type FormattedWeight = WeightLog & { tanggal: string; waktu: string };
+
+const CustomTooltip = (props: TooltipProps<number, string>) => {
+  const { active, payload, label } = props as any;
+  if (active && payload && payload.length) {
+    const log = payload[0].payload as FormattedWeight;
+    return (
+      <div className="bg-slate-900/95 text-white p-3.5 rounded-xl border border-slate-800 shadow-xl text-xs backdrop-blur-xs">
+        <p className="font-semibold text-slate-300">{label} ({log.waktu})</p>
+        <div className="mt-2 space-y-1">
+          <p className="flex justify-between gap-6">
+            <span className="text-amber-400 font-medium">Berat Badan:</span>
+            <span className="font-mono font-bold text-sm text-amber-300">
+              {Number(log.weight).toFixed(1)} <span className="text-[10px] text-slate-400">kg</span>
+            </span>
+          </p>
+          {log.notes && (
+            <p className="text-[11px] text-slate-400 border-t border-slate-800 pt-1.5 mt-1.5 italic max-w-[200px] break-words">
+                Catatan: &ldquo;{log.notes}&rdquo;
+            </p>
+          )}
+        </div>
+      </div>
+    );
+  }
+  return null;
+};
+
 export default function WeightChart({ data }: WeightChartProps) {
   // Format dates for display
-  const formattedData = data.map((log) => {
+  const formattedData: FormattedWeight[] = data.map((log) => {
     const d = new Date(log.logged_at);
     return {
       ...log,
@@ -23,31 +52,6 @@ export default function WeightChart({ data }: WeightChartProps) {
       waktu: d.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }),
     };
   });
-
-  const CustomTooltip = ({ active, payload, label }: any) => {
-    if (active && payload && payload.length) {
-      const log = payload[0].payload;
-      return (
-        <div className="bg-slate-900/95 text-white p-3.5 rounded-xl border border-slate-800 shadow-xl text-xs backdrop-blur-xs">
-          <p className="font-semibold text-slate-300">{label} ({log.waktu})</p>
-          <div className="mt-2 space-y-1">
-            <p className="flex justify-between gap-6">
-              <span className="text-amber-400 font-medium">Berat Badan:</span>
-              <span className="font-mono font-bold text-sm text-amber-300">
-                {Number(log.weight).toFixed(1)} <span className="text-[10px] text-slate-400">kg</span>
-              </span>
-            </p>
-            {log.notes && (
-              <p className="text-[11px] text-slate-400 border-t border-slate-800 pt-1.5 mt-1.5 italic max-w-[200px] break-words">
-                Catatan: "{log.notes}"
-              </p>
-            )}
-          </div>
-        </div>
-      );
-    }
-    return null;
-  };
 
   return (
     <div className="w-full h-[320px] bg-white dark:bg-slate-900 rounded-xl">

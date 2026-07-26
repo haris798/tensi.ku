@@ -126,7 +126,8 @@ const KEYS = {
   AI_TIPS: 'local_ai_tips_v1'
 };
 
-export function initLocalStorage() {
+// Call once at module init to ensure seed data is present
+function ensureSeeded() {
   const seeded = localStorage.getItem(KEYS.HAS_SEEDED);
   if (!seeded) {
     localStorage.setItem(KEYS.BP, JSON.stringify(DUMMY_BP_LOGS));
@@ -135,10 +136,10 @@ export function initLocalStorage() {
     localStorage.setItem(KEYS.HAS_SEEDED, 'true');
   }
 }
+ensureSeeded();
 
 export const localDb = {
   getBPLogs(): BloodPressureLog[] {
-    initLocalStorage();
     const data = localStorage.getItem(KEYS.BP);
     return data ? JSON.parse(data) : [];
   },
@@ -169,7 +170,6 @@ export const localDb = {
   },
 
   getWeightLogs(): WeightLog[] {
-    initLocalStorage();
     const data = localStorage.getItem(KEYS.WEIGHT);
     return data ? JSON.parse(data) : [];
   },
@@ -197,7 +197,6 @@ export const localDb = {
   },
 
   getProfile(): UserProfile {
-    initLocalStorage();
     const data = localStorage.getItem(KEYS.PROFILE);
     return data ? JSON.parse(data) : DUMMY_PROFILE;
   },
@@ -237,6 +236,6 @@ export const localDb = {
     localStorage.removeItem(KEYS.WEIGHT);
     localStorage.removeItem(KEYS.PROFILE);
     localStorage.removeItem(KEYS.HAS_SEEDED);
-    initLocalStorage();
+    ensureSeeded();
   }
 };
