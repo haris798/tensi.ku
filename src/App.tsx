@@ -77,9 +77,6 @@ export default function App() {
   const [trendPeriod, setTrendPeriod] = useState<"monthly" | "yearly">(
     "monthly"
   );
-  const [isSyncing, setIsSyncing] = useState(false);
-  const [isOffline, setIsOffline] = useState(!navigator.onLine);
-  const [databaseError, setDatabaseError] = useState<string | null>(null);
   const [actionSuccess, setActionSuccess] = useState<string | null>(null);
   const [isDragging, setIsDragging] = useState(false);
 
@@ -268,12 +265,10 @@ export default function App() {
     document.documentElement.classList.toggle("dark", isDark);
   }, [isDark]);
 
-  // ── Online/Offline & Sync ───────────────────────────────
+  // ── Silent Background Sync ────────────────────────────
   const handleBackgroundSync = useCallback(async () => {
-    setDatabaseError(null);
     if (!navigator.onLine || !supabase) return;
 
-    setIsSyncing(true);
     try {
       const currentFullName = profile?.full_name || "Pengguna";
       let userId: string | undefined;
@@ -302,12 +297,21 @@ export default function App() {
 
       if (userId) {
         syncEngine.setLastUserId(userId);
+        // Push local changes to Supabase first
         await syncEngine.processQueue(userId);
+        // Then fetch remote changes and merge into localDb
         const fresh = await syncEngine.fetchAndCacheAll(userId);
-        if (fresh.bp && fresh.bp.length > 0) setBpLogs(fresh.bp);
-        if (fresh.weight && fresh.weight.length > 0) setWeightLogs(fresh.weight);
+        if (fresh.bp && fresh.bp.length > 0) {
+          fresh.bp.forEach((log) => localDb.saveBPLog(log.systolic, log.diastolic, log.pulse, log.logged_at, log.notes));
+          setBpLogs(localDb.getBPLogs());
+        }
+        if (fresh.weight && fresh.weight.length > 0) {
+          fresh.weight.forEach((log) => localDb.saveWeightLog(log.weight, log.logged_at, log.notes));
+          setWeightLogs(localDb.getWeightLogs());
+        }
         if (fresh.profile) {
-          setProfile(fresh.profile);
+          localDb.saveProfile(fresh.profile.full_name, fresh.profile.target_weight, fresh.profile.height);
+          setProfile(localDb.getProfile());
           setProfileNameInput(fresh.profile.full_name || "Pengguna");
           setTargetWeightInput(fresh.profile.target_weight ? String(fresh.profile.target_weight) : "");
           setHeightInput(fresh.profile.height ? String(fresh.profile.height) : "");
@@ -315,26 +319,16 @@ export default function App() {
       }
     } catch (err: any) {
       console.warn("Background sync message:", err);
-    } finally {
-      setIsSyncing(false);
     }
   }, [profile]);
 
   useEffect(() => {
     if (navigator.onLine) handleBackgroundSync();
 
-    const handleOnline = () => {
-      setIsOffline(false);
-      handleBackgroundSync();
-    };
-    const handleOffline = () => setIsOffline(true);
+    const handleOnline = () => handleBackgroundSync();
 
     window.addEventListener("online", handleOnline);
-    window.addEventListener("offline", handleOffline);
-    return () => {
-      window.removeEventListener("online", handleOnline);
-      window.removeEventListener("offline", handleOffline);
-    };
+    return () => window.removeEventListener("online", handleOnline);
   }, [handleBackgroundSync]);
 
   // ── Profile Update ──────────────────────────────────────
@@ -347,22 +341,25 @@ export default function App() {
       const parsedHeight = heightInput.trim() ? parseFloat(heightInput) : null;
 
       try {
+        // Local-first: always save to localStorage
         const updated = localDb.saveProfile(profileNameInput.trim(), parsedTargetWeight, parsedHeight);
-        if (supabase && !isOffline) {
+        setProfile(updated);
+
+        // If Supabase connected, also queue for background sync
+        if (supabase && navigator.onLine) {
           const userId = syncEngine.getLastUserId();
           if (userId) {
             syncEngine.localUpdateProfile(userId, profileNameInput.trim(), parsedTargetWeight, parsedHeight);
+            setTimeout(handleBackgroundSync, 500);
           }
         }
-        setProfile(updated);
         showSuccessAlert("Profil berhasil diperbarui!");
-        if (navigator.onLine && supabase) setTimeout(handleBackgroundSync, 500);
       } catch (err: any) {
         console.error(err);
         alert("Gagal memperbarui profil: " + err.message);
       }
     },
-    [profileNameInput, targetWeightInput, heightInput, isOffline, showSuccessAlert, handleBackgroundSync]
+    [profileNameInput, targetWeightInput, heightInput, showSuccessAlert, handleBackgroundSync, supabase]
   );
 
   // ── Add BP Log ─────────────────────────────────────────
@@ -378,13 +375,17 @@ export default function App() {
       }
 
       try {
-        const userId = syncEngine.getLastUserId();
-        if (supabase && userId) {
-          syncEngine.localAddBP(userId, sys, dia, pulse, new Date(bpDate).toISOString(), bpNotes);
-          setBpLogs(syncEngine.getCachedBP(userId));
-        } else {
-          localDb.saveBPLog(sys, dia, pulse, new Date(bpDate).toISOString(), bpNotes);
-          setBpLogs(localDb.getBPLogs());
+        // Local-first: always save to localStorage
+        localDb.saveBPLog(sys, dia, pulse, new Date(bpDate).toISOString(), bpNotes);
+        setBpLogs(localDb.getBPLogs());
+
+        // If Supabase connected, also queue for background sync
+        if (supabase && navigator.onLine) {
+          const userId = syncEngine.getLastUserId();
+          if (userId) {
+            syncEngine.localAddBP(userId, sys, dia, pulse, new Date(bpDate).toISOString(), bpNotes);
+            setTimeout(handleBackgroundSync, 500);
+          }
         }
         showSuccessAlert("Catatan tensi berhasil disimpan!");
         setSysInput("");
@@ -394,13 +395,12 @@ export default function App() {
         const now = new Date();
         now.setMinutes(now.getMinutes() - now.getTimezoneOffset());
         setBpDate(now.toISOString().slice(0, 16));
-        if (navigator.onLine && supabase) setTimeout(handleBackgroundSync, 500);
       } catch (err: any) {
         console.error(err);
         alert("Gagal menyimpan catatan: " + err.message);
       }
     },
-    [sysInput, diaInput, pulseInput, bpDate, bpNotes, showSuccessAlert, handleBackgroundSync]
+    [sysInput, diaInput, pulseInput, bpDate, bpNotes, showSuccessAlert, handleBackgroundSync, supabase]
   );
 
   // ── Add Weight Log ─────────────────────────────────────
@@ -414,13 +414,17 @@ export default function App() {
       }
 
       try {
-        const userId = syncEngine.getLastUserId();
-        if (supabase && userId) {
-          syncEngine.localAddWeight(userId, w, new Date(weightDate).toISOString(), weightNotes);
-          setWeightLogs(syncEngine.getCachedWeight(userId));
-        } else {
-          localDb.saveWeightLog(w, new Date(weightDate).toISOString(), weightNotes);
-          setWeightLogs(localDb.getWeightLogs());
+        // Local-first: always save to localStorage
+        localDb.saveWeightLog(w, new Date(weightDate).toISOString(), weightNotes);
+        setWeightLogs(localDb.getWeightLogs());
+
+        // If Supabase connected, also queue for background sync
+        if (supabase && navigator.onLine) {
+          const userId = syncEngine.getLastUserId();
+          if (userId) {
+            syncEngine.localAddWeight(userId, w, new Date(weightDate).toISOString(), weightNotes);
+            setTimeout(handleBackgroundSync, 500);
+          }
         }
         showSuccessAlert("Catatan berat badan berhasil disimpan!");
         setWeightInput("");
@@ -428,56 +432,61 @@ export default function App() {
         const now = new Date();
         now.setMinutes(now.getMinutes() - now.getTimezoneOffset());
         setWeightDate(now.toISOString().slice(0, 16));
-        if (navigator.onLine && supabase) setTimeout(handleBackgroundSync, 500);
       } catch (err: any) {
         console.error(err);
         alert("Gagal menyimpan berat badan: " + err.message);
       }
     },
-    [weightInput, weightNotes, weightDate, showSuccessAlert, handleBackgroundSync]
+    [weightInput, weightNotes, weightDate, showSuccessAlert, handleBackgroundSync, supabase]
   );
 
   // ── Delete Logs ────────────────────────────────────────
   const handleDeleteBP = useCallback(
     (id: string) => {
       try {
-        const userId = syncEngine.getLastUserId();
-        if (supabase && userId) {
-          syncEngine.localDeleteBP(userId, id);
-          setBpLogs(syncEngine.getCachedBP(userId));
-        } else {
-          localDb.deleteBPLog(id);
-          setBpLogs(localDb.getBPLogs());
+        // Local-first: always delete from localStorage
+        localDb.deleteBPLog(id);
+        setBpLogs(localDb.getBPLogs());
+
+        // If Supabase connected, also queue for background sync
+        if (supabase && navigator.onLine) {
+          const userId = syncEngine.getLastUserId();
+          if (userId) {
+            syncEngine.localDeleteBP(userId, id);
+            setTimeout(handleBackgroundSync, 500);
+          }
         }
         showSuccessAlert("Catatan tensi berhasil dihapus.");
-        if (navigator.onLine && supabase) setTimeout(handleBackgroundSync, 500);
       } catch (err: any) {
         console.error(err);
         alert("Gagal menghapus catatan: " + err.message);
       }
     },
-    [showSuccessAlert, handleBackgroundSync]
+    [showSuccessAlert, handleBackgroundSync, supabase]
   );
 
   const handleDeleteWeight = useCallback(
     (id: string) => {
       try {
-        const userId = syncEngine.getLastUserId();
-        if (supabase && userId) {
-          syncEngine.localDeleteWeight(userId, id);
-          setWeightLogs(syncEngine.getCachedWeight(userId));
-        } else {
-          localDb.deleteWeightLog(id);
-          setWeightLogs(localDb.getWeightLogs());
+        // Local-first: always delete from localStorage
+        localDb.deleteWeightLog(id);
+        setWeightLogs(localDb.getWeightLogs());
+
+        // If Supabase connected, also queue for background sync
+        if (supabase && navigator.onLine) {
+          const userId = syncEngine.getLastUserId();
+          if (userId) {
+            syncEngine.localDeleteWeight(userId, id);
+            setTimeout(handleBackgroundSync, 500);
+          }
         }
         showSuccessAlert("Catatan berat badan berhasil dihapus.");
-        if (navigator.onLine && supabase) setTimeout(handleBackgroundSync, 500);
       } catch (err: any) {
         console.error(err);
         alert("Gagal menghapus catatan: " + err.message);
       }
     },
-    [showSuccessAlert, handleBackgroundSync]
+    [showSuccessAlert, handleBackgroundSync, supabase]
   );
 
   // ── Config ─────────────────────────────────────────────
@@ -600,19 +609,6 @@ export default function App() {
 
           {/* Right section */}
           <div className="flex flex-wrap items-center justify-center sm:justify-end gap-3 w-full sm:w-auto">
-            {/* Status Badge */}
-            {isOffline ? (
-              <div className="bg-red-50 dark:bg-red-950/30 text-red-700 dark:text-red-400 border-red-200 dark:border-red-900/40 text-[11px] font-bold px-3 py-1.5 rounded-full flex items-center gap-1.5 border shadow-xs">
-                <span className="h-2 w-2 rounded-full bg-red-500" />
-                <span>Mode Offline (Tersimpan Lokal)</span>
-              </div>
-            ) : isSyncing ? (
-              <div className="bg-indigo-50 dark:bg-indigo-950/30 text-indigo-700 dark:text-indigo-400 border-indigo-200 dark:border-indigo-900/40 text-[11px] font-bold px-3 py-1.5 rounded-full flex items-center gap-1.5 border shadow-xs">
-                <RefreshCw className="h-3 w-3 animate-spin" />
-                <span>Menyinkronkan...</span>
-              </div>
-            ) : null}
-
             {/* Tab Switcher */}
             <div className="flex items-center gap-1 p-1 rounded-xl border border-slate-200 dark:border-slate-800 bg-white/50 dark:bg-slate-900/50 backdrop-blur-sm">
               {([
@@ -642,14 +638,10 @@ export default function App() {
             <div className="flex items-center gap-1.5">
               <button
                 onClick={() => setIsConfigOpen(true)}
-                title={!isOffline && !isSyncing ? "Tersinkronisasi (Atur Supabase)" : "Atur Sambungan Supabase"}
-                className={`p-2 rounded-xl border transition-all active:scale-95 shadow-xs flex items-center justify-center cursor-pointer ${
-                  !isOffline && !isSyncing
-                    ? "border-emerald-200 dark:border-emerald-900/40 bg-emerald-50 dark:bg-emerald-950/30 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-100 dark:hover:bg-emerald-950/50"
-                    : "border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-slate-500 dark:text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400"
-                }`}
+                title="Atur Sambungan Supabase"
+                className="p-2 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-slate-500 dark:text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 transition-all active:scale-95 shadow-xs flex items-center justify-center cursor-pointer"
               >
-                <Database className={`h-4 w-4 ${!isOffline && !isSyncing ? "animate-pulse" : ""}`} />
+                <Database className="h-4 w-4" />
               </button>
 
               <button
@@ -669,18 +661,6 @@ export default function App() {
         <div className="fixed bottom-6 right-6 z-50 p-4 rounded-xl bg-slate-900 text-white text-xs font-semibold shadow-xl border border-slate-800 flex items-center gap-2.5 animate-bounce">
           <CheckCircle className="h-4.5 w-4.5 text-emerald-400" />
           <span>{actionSuccess}</span>
-        </div>
-      )}
-
-      {databaseError && (
-        <div className="mx-4 sm:mx-6 mt-6 max-w-7xl lg:mx-auto">
-          <div className="p-4 rounded-xl bg-rose-50 border border-rose-200 text-rose-900 text-xs sm:text-sm leading-relaxed flex gap-3 items-start">
-            <AlertTriangle className="h-5 w-5 text-rose-500 shrink-0 mt-0.5" />
-            <div className="space-y-1">
-              <p className="font-bold">Masalah Database Terdeteksi</p>
-              <p>{databaseError}</p>
-            </div>
-          </div>
         </div>
       )}
 
