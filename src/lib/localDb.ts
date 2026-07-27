@@ -3,7 +3,7 @@ import { BloodPressureLog, WeightLog, UserProfile, AITipLog } from '../types';
 // Pre-populate with realistic mock health records for an immersive first impression
 const DUMMY_BP_LOGS: BloodPressureLog[] = [
   {
-    id: 'bp-1',
+    id: '11111111-1111-4111-8111-111111111111',
     user_id: 'local-user',
     systolic: 118,
     diastolic: 78,
@@ -13,7 +13,7 @@ const DUMMY_BP_LOGS: BloodPressureLog[] = [
     created_at: new Date(Date.now() - 6 * 24 * 60 * 60 * 1000).toISOString(),
   },
   {
-    id: 'bp-2',
+    id: '22222222-2222-4222-8222-222222222222',
     user_id: 'local-user',
     systolic: 122,
     diastolic: 81,
@@ -23,7 +23,7 @@ const DUMMY_BP_LOGS: BloodPressureLog[] = [
     created_at: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000).toISOString(),
   },
   {
-    id: 'bp-3',
+    id: '33333333-3333-4333-8333-333333333333',
     user_id: 'local-user',
     systolic: 135,
     diastolic: 86,
@@ -33,7 +33,7 @@ const DUMMY_BP_LOGS: BloodPressureLog[] = [
     created_at: new Date(Date.now() - 4 * 24 * 60 * 60 * 1000).toISOString(),
   },
   {
-    id: 'bp-4',
+    id: '44444444-4444-4444-8444-444444444444',
     user_id: 'local-user',
     systolic: 128,
     diastolic: 82,
@@ -43,7 +43,7 @@ const DUMMY_BP_LOGS: BloodPressureLog[] = [
     created_at: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString(),
   },
   {
-    id: 'bp-5',
+    id: '55555555-5555-4555-8555-555555555555',
     user_id: 'local-user',
     systolic: 119,
     diastolic: 79,
@@ -53,7 +53,7 @@ const DUMMY_BP_LOGS: BloodPressureLog[] = [
     created_at: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString(),
   },
   {
-    id: 'bp-6',
+    id: '66666666-6666-4666-8666-666666666666',
     user_id: 'local-user',
     systolic: 142,
     diastolic: 92,
@@ -63,7 +63,7 @@ const DUMMY_BP_LOGS: BloodPressureLog[] = [
     created_at: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000).toISOString(),
   },
   {
-    id: 'bp-7',
+    id: '77777777-7777-4777-8777-777777777777',
     user_id: 'local-user',
     systolic: 120,
     diastolic: 80,
@@ -76,7 +76,7 @@ const DUMMY_BP_LOGS: BloodPressureLog[] = [
 
 const DUMMY_WEIGHT_LOGS: WeightLog[] = [
   {
-    id: 'w-1',
+    id: 'aaaaa111-1111-4111-8111-111111111111',
     user_id: 'local-user',
     weight: 72.5,
     logged_at: new Date(Date.now() - 6 * 24 * 60 * 60 * 1000).toISOString(),
@@ -84,7 +84,7 @@ const DUMMY_WEIGHT_LOGS: WeightLog[] = [
     created_at: new Date(Date.now() - 6 * 24 * 60 * 60 * 1000).toISOString(),
   },
   {
-    id: 'w-2',
+    id: 'aaaaa222-2222-4222-8222-222222222222',
     user_id: 'local-user',
     weight: 72.3,
     logged_at: new Date(Date.now() - 4 * 24 * 60 * 60 * 1000).toISOString(),
@@ -92,7 +92,7 @@ const DUMMY_WEIGHT_LOGS: WeightLog[] = [
     created_at: new Date(Date.now() - 4 * 24 * 60 * 60 * 1000).toISOString(),
   },
   {
-    id: 'w-3',
+    id: 'aaaaa333-3333-4333-8333-333333333333',
     user_id: 'local-user',
     weight: 72.6,
     logged_at: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString(),
@@ -100,7 +100,7 @@ const DUMMY_WEIGHT_LOGS: WeightLog[] = [
     created_at: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString(),
   },
   {
-    id: 'w-4',
+    id: 'aaaaa444-4444-4444-8444-444444444444',
     user_id: 'local-user',
     weight: 72.1,
     logged_at: new Date().toISOString(),
@@ -138,16 +138,24 @@ function ensureSeeded() {
 }
 ensureSeeded();
 
+export function generateUUID(): string {
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+    const r = (Math.random() * 16) | 0;
+    const v = c === 'x' ? r : (r & 0x3) | 0x8;
+    return v.toString(16);
+  });
+}
+
 export const localDb = {
   getBPLogs(): BloodPressureLog[] {
     const data = localStorage.getItem(KEYS.BP);
     return data ? JSON.parse(data) : [];
   },
 
-  saveBPLog(systolic: number, diastolic: number, pulse: number, loggedAt: string, notes: string): BloodPressureLog {
+  saveBPLog(systolic: number, diastolic: number, pulse: number, loggedAt: string, notes: string, existingId?: string): BloodPressureLog {
     const logs = this.getBPLogs();
     const newLog: BloodPressureLog = {
-      id: `bp-${Math.random().toString(36).substr(2, 9)}`,
+      id: existingId || generateUUID(),
       user_id: 'local-user',
       systolic,
       diastolic,
@@ -156,7 +164,12 @@ export const localDb = {
       notes: notes.trim(),
       created_at: new Date().toISOString()
     };
-    logs.push(newLog);
+    const existingIndex = logs.findIndex(l => l.id === newLog.id);
+    if (existingIndex >= 0) {
+      logs[existingIndex] = newLog;
+    } else {
+      logs.push(newLog);
+    }
     // Sort chronologically
     logs.sort((a, b) => new Date(a.logged_at).getTime() - new Date(b.logged_at).getTime());
     localStorage.setItem(KEYS.BP, JSON.stringify(logs));
@@ -174,17 +187,22 @@ export const localDb = {
     return data ? JSON.parse(data) : [];
   },
 
-  saveWeightLog(weight: number, loggedAt: string, notes: string): WeightLog {
+  saveWeightLog(weight: number, loggedAt: string, notes: string, existingId?: string): WeightLog {
     const logs = this.getWeightLogs();
     const newLog: WeightLog = {
-      id: `w-${Math.random().toString(36).substr(2, 9)}`,
+      id: existingId || generateUUID(),
       user_id: 'local-user',
       weight,
       logged_at: loggedAt,
       notes: notes.trim(),
       created_at: new Date().toISOString()
     };
-    logs.push(newLog);
+    const existingIndex = logs.findIndex(l => l.id === newLog.id);
+    if (existingIndex >= 0) {
+      logs[existingIndex] = newLog;
+    } else {
+      logs.push(newLog);
+    }
     logs.sort((a, b) => new Date(a.logged_at).getTime() - new Date(b.logged_at).getTime());
     localStorage.setItem(KEYS.WEIGHT, JSON.stringify(logs));
     return newLog;

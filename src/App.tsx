@@ -57,6 +57,8 @@ export default function App() {
   // ── State ────────────────────────────────────────────────
   const [creds, setCreds] = useState(getSavedCredentials());
 
+
+
   const [profile, setProfile] = useState<UserProfile>(() =>
     localDb.getProfile()
   );
@@ -275,28 +277,28 @@ export default function App() {
       const currentFullName = profile?.full_name || "Pengguna";
       let userId: string | undefined;
 
-      const { data: existingProfile, error: searchErr } = await supabase
-        .from("profiles")
-        .select("id")
-        .eq("full_name", currentFullName)
-        .maybeSingle();
-
-      if (existingProfile) {
-        userId = existingProfile.id;
-      } else if (!searchErr) {
-        const { data: newProfile } = await supabase
+      const { data: { user }, error: authErr } = await supabase.auth.getUser();
+      if (user) {
+        userId = user.id;
+        
+        const { data: existingProfile, error: searchErr } = await supabase
           .from("profiles")
-          .insert({
-            full_name: currentFullName,
-            height: profile?.height || null,
-            target_weight: profile?.target_weight || null,
-          })
           .select("id")
-          .single();
+          .eq("id", userId)
+          .maybeSingle();
 
-        if (newProfile) userId = newProfile.id;
+        if (!existingProfile && !searchErr) {
+          await supabase
+            .from("profiles")
+            .insert({
+              id: userId,
+              full_name: currentFullName + (Math.random().toString(36).substring(2,6)),
+              height: profile?.height || null,
+              target_weight: profile?.target_weight || null,
+            });
+        }
       }
-
+      
       if (userId) {
         syncEngine.setLastUserId(userId);
         // Push local changes to Supabase first
@@ -516,6 +518,7 @@ export default function App() {
       } else {
         showSuccessAlert("Konfigurasi sambungan berhasil diperbarui!");
       }
+      setTimeout(() => window.location.reload(), 1500); // Reload to initialize client properly
     },
     [showSuccessAlert]
   );
@@ -538,28 +541,28 @@ export default function App() {
       const currentFullName = profile?.full_name || "Pengguna";
       let userId: string | undefined;
 
-      const { data: existingProfile, error: searchErr } = await supabase
-        .from("profiles")
-        .select("id")
-        .eq("full_name", currentFullName)
-        .maybeSingle();
-
-      if (existingProfile) {
-        userId = existingProfile.id;
-      } else if (!searchErr) {
-        const { data: newProfile } = await supabase
+      const { data: { user }, error: authErr } = await supabase.auth.getUser();
+      if (user) {
+        userId = user.id;
+        
+        const { data: existingProfile, error: searchErr } = await supabase
           .from("profiles")
-          .insert({
-            full_name: currentFullName,
-            height: profile?.height || null,
-            target_weight: profile?.target_weight || null,
-          })
           .select("id")
-          .single();
+          .eq("id", userId)
+          .maybeSingle();
 
-        if (newProfile) userId = newProfile.id;
+        if (!existingProfile && !searchErr) {
+          await supabase
+            .from("profiles")
+            .insert({
+              id: userId,
+              full_name: currentFullName + (Math.random().toString(36).substring(2,6)),
+              height: profile?.height || null,
+              target_weight: profile?.target_weight || null,
+            });
+        }
       }
-
+      
       if (!userId) {
         showSuccessAlert("Gagal mendapatkan ID pengguna dari Supabase.");
         setIsManualSyncing(false);

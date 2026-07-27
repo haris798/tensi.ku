@@ -1,6 +1,6 @@
 export interface BloodPressureLog {
-  id: string;
-  user_id: string;
+  id: number | string;
+  user_id: number | string;
   systolic: number;
   diastolic: number;
   pulse: number;

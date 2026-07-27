@@ -97,10 +97,10 @@ export const syncEngine = {
   },
 
   // Local-first Operations
-  localAddBP(userId: string, systolic: number, diastolic: number, pulse: number, loggedAt: string, notes: string): BloodPressureLog {
+  localAddBP(userId: string, systolic: number, diastolic: number, pulse: number, loggedAt: string, notes: string, existingId?: string): BloodPressureLog {
     const logs = this.getCachedBP(userId);
     const newLog: BloodPressureLog = {
-      id: generateUUID(),
+      id: existingId || generateUUID(),
       user_id: userId,
       systolic,
       diastolic,
@@ -128,10 +128,10 @@ export const syncEngine = {
     this.addToQueue(userId, 'DELETE_BP', { id });
   },
 
-  localAddWeight(userId: string, weight: number, loggedAt: string, notes: string): WeightLog {
+  localAddWeight(userId: string, weight: number, loggedAt: string, notes: string, existingId?: string): WeightLog {
     const logs = this.getCachedWeight(userId);
     const newLog: WeightLog = {
-      id: generateUUID(),
+      id: existingId || generateUUID(),
       user_id: userId,
       weight,
       logged_at: loggedAt,
@@ -181,13 +181,16 @@ export const syncEngine = {
 
     switch (type) {
       case 'ADD_BP': {
+        const payloadForDb = { ...payload };
+        if (typeof payloadForDb.id === 'string') delete payloadForDb.id;
         const { error } = await client
           .from('blood_pressure_logs')
-          .upsert(payload); // Use upsert to handle potential duplicate retries
+          .insert(payloadForDb);
         if (error) throw error;
         break;
       }
       case 'DELETE_BP': {
+        if (typeof payload.id === 'string') break; // Local only
         const { error } = await client
           .from('blood_pressure_logs')
           .delete()
@@ -196,13 +199,16 @@ export const syncEngine = {
         break;
       }
       case 'ADD_WEIGHT': {
+        const payloadForDb = { ...payload };
+        if (typeof payloadForDb.id === 'string') delete payloadForDb.id;
         const { error } = await client
           .from('weight_logs')
-          .upsert(payload);
+          .insert(payloadForDb);
         if (error) throw error;
         break;
       }
       case 'DELETE_WEIGHT': {
+        if (typeof payload.id === 'string') break; // Local only
         const { error } = await client
           .from('weight_logs')
           .delete()
