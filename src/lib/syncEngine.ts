@@ -1,4 +1,4 @@
-import { supabase } from './supabase';
+import { getSupabase } from './supabase';
 import { BloodPressureLog, WeightLog, UserProfile } from '../types';
 
 export interface SyncAction {
@@ -239,7 +239,7 @@ export const syncEngine = {
 
   // Process the queue and push up to Supabase
   async processQueue(userId: string): Promise<{ success: boolean; syncedCount: number; error?: any }> {
-    if (!supabase) {
+    if (!getSupabase()) {
       return { success: false, syncedCount: 0, error: new Error('Supabase client not initialized') };
     }
 
@@ -253,7 +253,7 @@ export const syncEngine = {
 
     try {
       for (const action of queue) {
-        await this.syncItem(supabase, action);
+        await this.syncItem(getSupabase()!, action);
         remainingQueue.shift(); // Remove successfully synced action
         syncedCount++;
         // Save state progressively
@@ -270,12 +270,12 @@ export const syncEngine = {
 
   // Fetch fresh data from Supabase and overwrite the local cache
   async fetchAndCacheAll(userId: string): Promise<{ bp: BloodPressureLog[]; weight: WeightLog[]; profile: UserProfile | null }> {
-    if (!supabase) {
+    if (!getSupabase()) {
       throw new Error('Supabase client not initialized');
     }
 
     // 1. Fetch profile
-    const { data: profileData, error: profileErr } = await supabase
+    const { data: profileData, error: profileErr } = await getSupabase()!
       .from('profiles')
       .select('*')
       .eq('id', userId)
@@ -298,7 +298,7 @@ export const syncEngine = {
     }
 
     // 2. Fetch BP logs
-    const { data: bpData, error: bpErr } = await supabase
+    const { data: bpData, error: bpErr } = await getSupabase()!
       .from('blood_pressure_logs')
       .select('*')
       .eq('user_id', userId)
@@ -307,7 +307,7 @@ export const syncEngine = {
     if (bpErr) throw bpErr;
 
     // 3. Fetch weight logs
-    const { data: wData, error: wErr } = await supabase
+    const { data: wData, error: wErr } = await getSupabase()!
       .from('weight_logs')
       .select('*')
       .eq('user_id', userId)

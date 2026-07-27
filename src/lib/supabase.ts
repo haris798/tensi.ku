@@ -37,7 +37,7 @@ if (creds.url && creds.anonKey) {
   }
 }
 
-export const supabase = supabaseInstance;
+export const getSupabase = () => supabaseInstance;
 
 export function updateSupabaseClient(url: string, anonKey: string, email?: string, password?: string): SupabaseClient | null {
   if (!url || !anonKey) {

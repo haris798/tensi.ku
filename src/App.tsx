@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import {
-  supabase,
+  getSupabase,
   getSavedCredentials,
   updateSupabaseClient,
   clearSavedCredentials,
@@ -271,30 +271,31 @@ export default function App() {
 
   // ── Silent Background Sync ────────────────────────────
   const handleBackgroundSync = useCallback(async () => {
-    if (!navigator.onLine || !supabase) return;
+    if (!navigator.onLine || !getSupabase()) return;
 
     try {
-      const currentFullName = profile?.full_name || "Pengguna";
+      const _localProfile = localDb.getProfile();
+      const currentFullName = _localProfile.full_name || "Pengguna";
       let userId: string | undefined;
 
-      const { data: { user }, error: authErr } = await supabase.auth.getUser();
+      const { data: { user }, error: authErr } = await getSupabase()!.auth.getUser();
       if (user) {
         userId = user.id;
         
-        const { data: existingProfile, error: searchErr } = await supabase
+        const { data: existingProfile, error: searchErr } = await getSupabase()!
           .from("profiles")
           .select("id")
           .eq("id", userId)
           .maybeSingle();
 
         if (!existingProfile && !searchErr) {
-          await supabase
+          await getSupabase()!
             .from("profiles")
             .insert({
               id: userId,
               full_name: currentFullName + (Math.random().toString(36).substring(2,6)),
-              height: profile?.height || null,
-              target_weight: profile?.target_weight || null,
+              height: _localProfile.height || null,
+              target_weight: _localProfile.target_weight || null,
             });
         }
       }
@@ -324,7 +325,7 @@ export default function App() {
     } catch (err: any) {
       console.warn("Background sync message:", err);
     }
-  }, [profile]);
+  }, []);
 
   useEffect(() => {
     if (navigator.onLine) handleBackgroundSync();
@@ -350,7 +351,7 @@ export default function App() {
         setProfile(updated);
 
         // If Supabase connected, also queue for background sync
-        if (supabase && navigator.onLine) {
+        if (getSupabase() && navigator.onLine) {
           const userId = syncEngine.getLastUserId();
           if (userId) {
             syncEngine.localUpdateProfile(userId, profileNameInput.trim(), parsedTargetWeight, parsedHeight);
@@ -363,7 +364,7 @@ export default function App() {
         alert("Gagal memperbarui profil: " + err.message);
       }
     },
-    [profileNameInput, targetWeightInput, heightInput, showSuccessAlert, handleBackgroundSync, supabase]
+    [profileNameInput, targetWeightInput, heightInput, showSuccessAlert, handleBackgroundSync]
   );
 
   // ── Add BP Log ─────────────────────────────────────────
@@ -384,7 +385,7 @@ export default function App() {
         setBpLogs(localDb.getBPLogs());
 
         // If Supabase connected, also queue for background sync
-        if (supabase && navigator.onLine) {
+        if (getSupabase() && navigator.onLine) {
           const userId = syncEngine.getLastUserId();
           if (userId) {
             syncEngine.localAddBP(userId, sys, dia, pulse, new Date(bpDate).toISOString(), bpNotes);
@@ -404,7 +405,7 @@ export default function App() {
         alert("Gagal menyimpan catatan: " + err.message);
       }
     },
-    [sysInput, diaInput, pulseInput, bpDate, bpNotes, showSuccessAlert, handleBackgroundSync, supabase]
+    [sysInput, diaInput, pulseInput, bpDate, bpNotes, showSuccessAlert, handleBackgroundSync]
   );
 
   // ── Add Weight Log ─────────────────────────────────────
@@ -423,7 +424,7 @@ export default function App() {
         setWeightLogs(localDb.getWeightLogs());
 
         // If Supabase connected, also queue for background sync
-        if (supabase && navigator.onLine) {
+        if (getSupabase() && navigator.onLine) {
           const userId = syncEngine.getLastUserId();
           if (userId) {
             syncEngine.localAddWeight(userId, w, new Date(weightDate).toISOString(), weightNotes);
@@ -441,7 +442,7 @@ export default function App() {
         alert("Gagal menyimpan berat badan: " + err.message);
       }
     },
-    [weightInput, weightNotes, weightDate, showSuccessAlert, handleBackgroundSync, supabase]
+    [weightInput, weightNotes, weightDate, showSuccessAlert, handleBackgroundSync]
   );
 
   // ── Delete Logs ────────────────────────────────────────
@@ -453,7 +454,7 @@ export default function App() {
         setBpLogs(localDb.getBPLogs());
 
         // If Supabase connected, also queue for background sync
-        if (supabase && navigator.onLine) {
+        if (getSupabase() && navigator.onLine) {
           const userId = syncEngine.getLastUserId();
           if (userId) {
             syncEngine.localDeleteBP(userId, id);
@@ -466,7 +467,7 @@ export default function App() {
         alert("Gagal menghapus catatan: " + err.message);
       }
     },
-    [showSuccessAlert, handleBackgroundSync, supabase]
+    [showSuccessAlert, handleBackgroundSync]
   );
 
   const handleDeleteWeight = useCallback(
@@ -477,7 +478,7 @@ export default function App() {
         setWeightLogs(localDb.getWeightLogs());
 
         // If Supabase connected, also queue for background sync
-        if (supabase && navigator.onLine) {
+        if (getSupabase() && navigator.onLine) {
           const userId = syncEngine.getLastUserId();
           if (userId) {
             syncEngine.localDeleteWeight(userId, id);
@@ -490,37 +491,32 @@ export default function App() {
         alert("Gagal menghapus catatan: " + err.message);
       }
     },
-    [showSuccessAlert, handleBackgroundSync, supabase]
+    [showSuccessAlert, handleBackgroundSync]
   );
 
   // ── Config ─────────────────────────────────────────────
   const handleSaveConfig = useCallback(
-    (url: string, key: string, email?: string, password?: string) => {
+    async (url: string, key: string, email?: string, password?: string) => {
       const activeClient = updateSupabaseClient(url, key, email, password);
       setCreds(getSavedCredentials());
-
       if (!activeClient) {
         alert("Kredensial tidak valid. Silakan masukkan URL dan Key Supabase yang benar.");
         return;
       }
-
       if (email && password) {
-        activeClient.auth
-          .signInWithPassword({ email, password })
-          .then(({ error }) => {
-            if (error) {
-              console.warn("SignIn error:", error);
-              alert("Konfigurasi tersimpan, namun gagal login: " + error.message);
-              return;
-            }
-            showSuccessAlert("Konfigurasi sambungan berhasil diperbarui!");
-          });
-      } else {
-        showSuccessAlert("Konfigurasi sambungan berhasil diperbarui!");
+        const { error } = await activeClient.auth.signInWithPassword({ email, password });
+        if (error) {
+          console.warn("SignIn error:", error);
+          alert("Konfigurasi tersimpan, namun gagal login: " + error.message);
+          return;
+        }
       }
-      setTimeout(() => window.location.reload(), 1500); // Reload to initialize client properly
+      
+      showSuccessAlert("Konfigurasi sambungan berhasil diperbarui!");
+      // Call background sync so the profile and data are fetched automatically
+      handleBackgroundSync();
     },
-    [showSuccessAlert]
+    [showSuccessAlert, handleBackgroundSync]
   );
 
   const handleResetConfig = useCallback(() => {
@@ -531,34 +527,35 @@ export default function App() {
 
   // ── Manual Full Sync from Supabase ─────────────────────
   const handleManualSync = useCallback(async () => {
-    if (!supabase || !navigator.onLine) {
+    if (!getSupabase() || !navigator.onLine) {
       showSuccessAlert("Tidak ada koneksi Supabase atau internet.");
       return;
     }
 
     setIsManualSyncing(true);
     try {
-      const currentFullName = profile?.full_name || "Pengguna";
+      const _localProfile = localDb.getProfile();
+      const currentFullName = _localProfile.full_name || "Pengguna";
       let userId: string | undefined;
 
-      const { data: { user }, error: authErr } = await supabase.auth.getUser();
+      const { data: { user }, error: authErr } = await getSupabase()!.auth.getUser();
       if (user) {
         userId = user.id;
         
-        const { data: existingProfile, error: searchErr } = await supabase
+        const { data: existingProfile, error: searchErr } = await getSupabase()!
           .from("profiles")
           .select("id")
           .eq("id", userId)
           .maybeSingle();
 
         if (!existingProfile && !searchErr) {
-          await supabase
+          await getSupabase()!
             .from("profiles")
             .insert({
               id: userId,
               full_name: currentFullName + (Math.random().toString(36).substring(2,6)),
-              height: profile?.height || null,
-              target_weight: profile?.target_weight || null,
+              height: _localProfile.height || null,
+              target_weight: _localProfile.target_weight || null,
             });
         }
       }
@@ -657,7 +654,7 @@ export default function App() {
             setBpLogs(localDb.getBPLogs());
             setWeightLogs(localDb.getWeightLogs());
             showSuccessAlert(`Berhasil mengimpor ${totalBp} rekam tensi & ${totalWeight} rekam berat badan!`);
-            if (navigator.onLine && supabase) setTimeout(handleBackgroundSync, 500);
+            if (navigator.onLine && getSupabase()) setTimeout(handleBackgroundSync, 500);
           } catch (err: any) {
             console.error("Gagal mengimpor CSV:", err);
             alert("Gagal mengimpor data CSV: " + err.message);
@@ -1017,7 +1014,7 @@ export default function App() {
                 <button
                   type="button"
                   onClick={handleManualSync}
-                  disabled={isManualSyncing || !supabase || !navigator.onLine}
+                  disabled={isManualSyncing || !getSupabase() || !navigator.onLine}
                   title="Download semua data dari Supabase dan ganti data lokal"
                   className={`p-2 border rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 active:scale-95 shrink-0 cursor-pointer ${
                     isManualSyncing
