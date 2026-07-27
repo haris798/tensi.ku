@@ -40,6 +40,7 @@ import {
   Scale,
   Copy,
   Sparkles,
+  CloudDownload,
 } from "lucide-react";
 
 // Components
@@ -79,6 +80,7 @@ export default function App() {
   );
   const [actionSuccess, setActionSuccess] = useState<string | null>(null);
   const [isDragging, setIsDragging] = useState(false);
+  const [isManualSyncing, setIsManualSyncing] = useState(false);
 
   // Refs for BP input auto-focus
   const sysRef = useRef<HTMLInputElement>(null);
@@ -524,6 +526,86 @@ export default function App() {
     showSuccessAlert("Konfigurasi sambungan berhasil di-reset.");
   }, [showSuccessAlert]);
 
+  // ── Manual Full Sync from Supabase ─────────────────────
+  const handleManualSync = useCallback(async () => {
+    if (!supabase || !navigator.onLine) {
+      showSuccessAlert("Tidak ada koneksi Supabase atau internet.");
+      return;
+    }
+
+    setIsManualSyncing(true);
+    try {
+      const currentFullName = profile?.full_name || "Pengguna";
+      let userId: string | undefined;
+
+      const { data: existingProfile, error: searchErr } = await supabase
+        .from("profiles")
+        .select("id")
+        .eq("full_name", currentFullName)
+        .maybeSingle();
+
+      if (existingProfile) {
+        userId = existingProfile.id;
+      } else if (!searchErr) {
+        const { data: newProfile } = await supabase
+          .from("profiles")
+          .insert({
+            full_name: currentFullName,
+            height: profile?.height || null,
+            target_weight: profile?.target_weight || null,
+          })
+          .select("id")
+          .single();
+
+        if (newProfile) userId = newProfile.id;
+      }
+
+      if (!userId) {
+        showSuccessAlert("Gagal mendapatkan ID pengguna dari Supabase.");
+        setIsManualSyncing(false);
+        return;
+      }
+
+      syncEngine.setLastUserId(userId);
+
+      // Push local changes first, then fetch all remote data
+      await syncEngine.processQueue(userId);
+      const fresh = await syncEngine.fetchAndCacheAll(userId);
+
+      // Replace all local data with remote data
+      if (fresh.bp.length > 0 || fresh.weight.length > 0 || fresh.profile) {
+        // Reset everything first
+        localDb.resetAll();
+
+        // Overwrite with Supabase data
+        fresh.bp.forEach((log) => localDb.saveBPLog(log.systolic, log.diastolic, log.pulse, log.logged_at, log.notes));
+        fresh.weight.forEach((log) => localDb.saveWeightLog(log.weight, log.logged_at, log.notes));
+
+        if (fresh.profile) {
+          localDb.saveProfile(fresh.profile.full_name, fresh.profile.target_weight, fresh.profile.height);
+        }
+
+        // Update all state
+        setBpLogs(localDb.getBPLogs());
+        setWeightLogs(localDb.getWeightLogs());
+        const updatedProfile = localDb.getProfile();
+        setProfile(updatedProfile);
+        setProfileNameInput(updatedProfile.full_name || "Pengguna");
+        setTargetWeightInput(updatedProfile.target_weight ? String(updatedProfile.target_weight) : "");
+        setHeightInput(updatedProfile.height ? String(updatedProfile.height) : "");
+
+        showSuccessAlert(`Sinkronasi selesai! ${fresh.bp.length} BP & ${fresh.weight.length} Weight dari Supabase.`);
+      } else {
+        showSuccessAlert("Tidak ada data ditemukan di Supabase. Gunakan menu Input Data untuk menambah.");
+      }
+    } catch (err: any) {
+      console.error("Manual sync error:", err);
+      showSuccessAlert("Gagal sinkronasi: " + (err.message || "Error tidak diketahui"));
+    } finally {
+      setIsManualSyncing(false);
+    }
+  }, [profile, showSuccessAlert]);
+
   // ── Export/Import ──────────────────────────────────────
   const exportLocalData = useCallback(() => {
     const dataStr = JSON.stringify(
@@ -929,6 +1011,20 @@ export default function App() {
 
               {/* Actions */}
               <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={handleManualSync}
+                  disabled={isManualSyncing || !supabase || !navigator.onLine}
+                  title="Download semua data dari Supabase dan ganti data lokal"
+                  className={`p-2 border rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 active:scale-95 shrink-0 cursor-pointer ${
+                    isManualSyncing
+                      ? "bg-indigo-100 text-indigo-400 border-indigo-200 cursor-wait"
+                      : "bg-indigo-50 text-indigo-600 border-indigo-200 hover:bg-indigo-100 dark:bg-indigo-950/30 dark:text-indigo-400 dark:border-indigo-900/40 dark:hover:bg-indigo-950/50"
+                  }`}
+                >
+                  <CloudDownload className={`h-4 w-4 ${isManualSyncing ? "animate-bounce" : ""}`} />
+                  <span className="hidden sm:inline">{isManualSyncing ? "Menyinkron..." : "Sync"}</span>
+                </button>
                 <button
                   type="button"
                   onClick={exportLocalData}
