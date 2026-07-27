@@ -77,6 +77,8 @@ export default function App() {
   const [currentTab, setCurrentTab] = useState<"bp" | "weight">("bp");
   const [logFilter, setLogFilter] = useState<"all" | "bp" | "weight">("all");
   const [searchQuery, setSearchQuery] = useState("");
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 15;
   const [trendPeriod, setTrendPeriod] = useState<"monthly" | "yearly">(
     "monthly"
   );
@@ -138,6 +140,10 @@ export default function App() {
   const latestBP = bpLogs[bpLogs.length - 1];
   const latestWeight = weightLogs[weightLogs.length - 1];
 
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [logFilter, searchQuery]);
+
   const logsToShow = useMemo(() => {
     let combined: Array<{
       type: "bp" | "weight";
@@ -187,6 +193,12 @@ export default function App() {
 
     return combined;
   }, [bpLogs, weightLogs, logFilter, searchQuery]);
+
+  const totalPages = Math.ceil(logsToShow.length / itemsPerPage);
+  const paginatedLogs = useMemo(() => {
+    const startIndex = (currentPage - 1) * itemsPerPage;
+    return logsToShow.slice(startIndex, startIndex + itemsPerPage);
+  }, [logsToShow, currentPage, itemsPerPage]);
 
   // ── Notifications ───────────────────────────────────────
   const showSuccessAlert = useCallback((msg: string) => {
@@ -278,7 +290,7 @@ export default function App() {
       const currentFullName = _localProfile.full_name || "Pengguna";
       let userId: string | undefined;
 
-      const { data: { user }, error: authErr } = await getSupabase()!.auth.getUser();
+      const { data: { user } } = await getSupabase()!.auth.getUser();
       if (user) {
         userId = user.id;
         
@@ -538,7 +550,7 @@ export default function App() {
       const currentFullName = _localProfile.full_name || "Pengguna";
       let userId: string | undefined;
 
-      const { data: { user }, error: authErr } = await getSupabase()!.auth.getUser();
+      const { data: { user } } = await getSupabase()!.auth.getUser();
       if (user) {
         userId = user.id;
         
@@ -1076,7 +1088,7 @@ export default function App() {
                       </td>
                     </tr>
                   ) : (
-                    logsToShow.map((item) => {
+                    paginatedLogs.map((item) => {
                       const localTimeStr = new Date(item.date).toLocaleDateString("id-ID", {
                         weekday: "long",
                         day: "numeric",
@@ -1158,8 +1170,29 @@ export default function App() {
               </table>
             </div>
 
-            <div className="mt-4 flex items-center justify-between text-[11px] text-slate-400 dark:text-slate-500 font-semibold font-mono">
+            <div className="mt-4 flex flex-col sm:flex-row items-center justify-between gap-4 text-[11px] text-slate-400 dark:text-slate-500 font-semibold font-mono">
               <span>Total {logsToShow.length} Rekaman Tersedia</span>
+              {totalPages > 1 && (
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                    disabled={currentPage === 1}
+                    className="p-2 rounded bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                  >
+                    &lt;&lt;
+                  </button>
+                  <span className="px-2">
+                    Halaman {currentPage} dari {totalPages}
+                  </span>
+                  <button
+                    onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                    disabled={currentPage === totalPages}
+                    className="p-2 rounded bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                  >
+                    &gt;&gt;
+                  </button>
+                </div>
+              )}
             </div>
           </section>
         )}
