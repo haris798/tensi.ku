@@ -75,7 +75,7 @@ export default function App() {
     "dashboard" | "statistik" | "input" | "riwayat" | "seting"
   >("dashboard");
   const [currentTab, setCurrentTab] = useState<"bp" | "weight">("bp");
-  const [logFilter, setLogFilter] = useState<"all" | "bp" | "weight">("all");
+  const [logFilter, setLogFilter] = useState<"all" | "bp" | "weight">("bp");
   const [searchQuery, setSearchQuery] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 15;
@@ -110,9 +110,13 @@ export default function App() {
     return now.toISOString().slice(0, 16);
   });
 
-  const [profileNameInput, setProfileNameInput] = useState("");
-  const [targetWeightInput, setTargetWeightInput] = useState("");
-  const [heightInput, setHeightInput] = useState("");
+  const [profileNameInput, setProfileNameInput] = useState(() => profile.full_name || "");
+  const [targetWeightInput, setTargetWeightInput] = useState(() =>
+    profile.target_weight ? String(profile.target_weight) : ""
+  );
+  const [heightInput, setHeightInput] = useState(() =>
+    profile.height ? String(profile.height) : ""
+  );
   const [isDark, setIsDark] = useState(
     () => localStorage.getItem("bp_dark_mode") === "true"
   );
@@ -288,7 +292,7 @@ export default function App() {
     try {
       const _localProfile = localDb.getProfile();
       const currentFullName = _localProfile.full_name || "Pengguna";
-      let userId: string | undefined;
+      let userId: string | undefined = syncEngine.getLastUserId() || undefined;
 
       const { data: { user } } = await getSupabase()!.auth.getUser();
       if (user) {
@@ -305,10 +309,23 @@ export default function App() {
             .from("profiles")
             .insert({
               id: userId,
-              full_name: currentFullName + (Math.random().toString(36).substring(2,6)),
+              full_name: currentFullName,
               height: _localProfile.height || null,
               target_weight: _localProfile.target_weight || null,
             });
+        }
+      }
+
+      // If no auth user or last user ID, query Supabase profiles table directly
+      if (!userId) {
+        const { data: remoteProfiles } = await getSupabase()!
+          .from("profiles")
+          .select("*")
+          .order("updated_at", { ascending: false })
+          .limit(1);
+
+        if (remoteProfiles && remoteProfiles.length > 0) {
+          userId = remoteProfiles[0].id;
         }
       }
       
@@ -319,19 +336,42 @@ export default function App() {
         // Then fetch remote changes and merge into localDb
         const fresh = await syncEngine.fetchAndCacheAll(userId);
         if (fresh.bp && fresh.bp.length > 0) {
-          fresh.bp.forEach((log) => localDb.saveBPLog(log.systolic, log.diastolic, log.pulse, log.logged_at, log.notes));
+          fresh.bp.forEach((log) => localDb.saveBPLog(Number(log.systolic), Number(log.diastolic), Number(log.pulse), log.logged_at, log.notes || "", String(log.id)));
           setBpLogs(localDb.getBPLogs());
         }
         if (fresh.weight && fresh.weight.length > 0) {
-          fresh.weight.forEach((log) => localDb.saveWeightLog(log.weight, log.logged_at, log.notes));
+          fresh.weight.forEach((log) => localDb.saveWeightLog(Number(log.weight), log.logged_at, log.notes || "", String(log.id)));
           setWeightLogs(localDb.getWeightLogs());
         }
         if (fresh.profile) {
-          localDb.saveProfile(fresh.profile.full_name, fresh.profile.target_weight, fresh.profile.height);
-          setProfile(localDb.getProfile());
-          setProfileNameInput(fresh.profile.full_name || "Pengguna");
-          setTargetWeightInput(fresh.profile.target_weight ? String(fresh.profile.target_weight) : "");
-          setHeightInput(fresh.profile.height ? String(fresh.profile.height) : "");
+          const updated = localDb.saveProfile(
+            fresh.profile.full_name || _localProfile.full_name || "Pengguna",
+            fresh.profile.target_weight !== undefined && fresh.profile.target_weight !== null ? fresh.profile.target_weight : _localProfile.target_weight,
+            fresh.profile.height !== undefined && fresh.profile.height !== null ? fresh.profile.height : _localProfile.height
+          );
+          setProfile(updated);
+          setProfileNameInput(updated.full_name || "");
+          setTargetWeightInput(updated.target_weight ? String(updated.target_weight) : "");
+          setHeightInput(updated.height ? String(updated.height) : "");
+        }
+      } else {
+        // Direct fallback: fetch any available profile row
+        const { data: directProfile } = await getSupabase()!
+          .from("profiles")
+          .select("*")
+          .limit(1)
+          .maybeSingle();
+
+        if (directProfile) {
+          const updated = localDb.saveProfile(
+            directProfile.full_name || _localProfile.full_name || "Pengguna",
+            directProfile.target_weight !== undefined && directProfile.target_weight !== null ? directProfile.target_weight : _localProfile.target_weight,
+            directProfile.height !== undefined && directProfile.height !== null ? directProfile.height : _localProfile.height
+          );
+          setProfile(updated);
+          setProfileNameInput(updated.full_name || "");
+          setTargetWeightInput(updated.target_weight ? String(updated.target_weight) : "");
+          setHeightInput(updated.height ? String(updated.height) : "");
         }
       }
     } catch (err: any) {
@@ -573,6 +613,18 @@ export default function App() {
       }
       
       if (!userId) {
+        const { data: remoteProfiles } = await getSupabase()!
+          .from("profiles")
+          .select("*")
+          .order("updated_at", { ascending: false })
+          .limit(1);
+
+        if (remoteProfiles && remoteProfiles.length > 0) {
+          userId = remoteProfiles[0].id;
+        }
+      }
+
+      if (!userId) {
         showSuccessAlert("Gagal mendapatkan ID pengguna dari Supabase.");
         setIsManualSyncing(false);
         return;
@@ -590,11 +642,15 @@ export default function App() {
         localDb.resetAll();
 
         // Overwrite with Supabase data
-        fresh.bp.forEach((log) => localDb.saveBPLog(log.systolic, log.diastolic, log.pulse, log.logged_at, log.notes));
-        fresh.weight.forEach((log) => localDb.saveWeightLog(log.weight, log.logged_at, log.notes));
+        fresh.bp.forEach((log) => localDb.saveBPLog(Number(log.systolic), Number(log.diastolic), Number(log.pulse), log.logged_at, log.notes || "", String(log.id)));
+        fresh.weight.forEach((log) => localDb.saveWeightLog(Number(log.weight), log.logged_at, log.notes || "", String(log.id)));
 
         if (fresh.profile) {
-          localDb.saveProfile(fresh.profile.full_name, fresh.profile.target_weight, fresh.profile.height);
+          localDb.saveProfile(
+            fresh.profile.full_name || "Pengguna",
+            fresh.profile.target_weight ? Number(fresh.profile.target_weight) : null,
+            fresh.profile.height ? Number(fresh.profile.height) : null
+          );
         }
 
         // Update all state
@@ -732,10 +788,14 @@ export default function App() {
             <div className="flex items-center gap-1.5">
               <button
                 onClick={() => setIsConfigOpen(true)}
-                title="Atur Sambungan Supabase"
-                className="p-2 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-slate-500 dark:text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 transition-all active:scale-95 shadow-xs flex items-center justify-center cursor-pointer"
+                title={getSupabase() ? "Supabase Terhubung (Klik untuk atur)" : "Atur Sambungan Supabase"}
+                className={`p-2 rounded-xl border transition-all active:scale-95 shadow-xs flex items-center justify-center cursor-pointer ${
+                  getSupabase()
+                    ? "bg-emerald-50 dark:bg-emerald-950/30 text-emerald-600 dark:text-emerald-400 border-emerald-200 dark:border-emerald-800/60"
+                    : "border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-slate-500 dark:text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400"
+                }`}
               >
-                <Database className="h-4 w-4" />
+                <Database className={`h-4 w-4 ${getSupabase() ? "text-emerald-600 dark:text-emerald-400" : ""}`} />
               </button>
 
               <button
@@ -987,6 +1047,12 @@ export default function App() {
                 <FileText className="h-5 w-5 text-indigo-600" />
                 Daftar Riwayat Rekam Medis Mandiri
               </h2>
+              {getSupabase() && (
+                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-emerald-50 dark:bg-emerald-950/30 text-emerald-600 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800/50">
+                  <Database className="h-3.5 w-3.5 text-emerald-500" />
+                  Supabase Terhubung
+                </span>
+              )}
             </div>
 
             {/* Filters & Actions */}
@@ -1156,10 +1222,14 @@ export default function App() {
                           <td className="px-5 py-3.5 text-center">
                             <button
                               onClick={() => (item.type === "bp" ? handleDeleteBP(item.id) : handleDeleteWeight(item.id))}
-                              className="p-1.5 rounded-lg text-slate-400 dark:text-slate-500 hover:text-rose-600 dark:hover:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/20 transition-all active:scale-95 cursor-pointer"
-                              title="Hapus rekaman medis ini"
+                              className={`p-1.5 rounded-lg transition-all active:scale-95 cursor-pointer flex items-center justify-center mx-auto ${
+                                getSupabase()
+                                  ? "text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200/60 dark:border-emerald-800/40 hover:bg-rose-50 hover:text-rose-600 hover:border-rose-200 dark:hover:bg-rose-950/30 dark:hover:border-rose-900/40"
+                                  : "text-slate-400 dark:text-slate-500 hover:text-rose-600 dark:hover:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/20"
+                              }`}
+                              title={getSupabase() ? "Hapus rekaman medis ini (Supabase Terhubung)" : "Hapus rekaman medis ini"}
                             >
-                              <Trash2 className="h-4.5 w-4.5" />
+                              <Trash2 className={`h-4.5 w-4.5 ${getSupabase() ? "text-emerald-600 dark:text-emerald-400" : ""}`} />
                             </button>
                           </td>
                         </tr>
