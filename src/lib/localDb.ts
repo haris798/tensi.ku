@@ -146,16 +146,68 @@ export function generateUUID(): string {
   });
 }
 
+// Deduplication helper for Blood Pressure logs
+export function deduplicateBPLogs(logs: BloodPressureLog[]): BloodPressureLog[] {
+  const seenIds = new Set<string>();
+  const seenKeys = new Set<string>();
+  const result: BloodPressureLog[] = [];
+
+  for (const log of logs) {
+    if (!log || !log.id) continue;
+    const logId = String(log.id);
+    const timeKey = log.logged_at ? new Date(log.logged_at).toISOString() : '';
+    const contentKey = `${timeKey}_${log.systolic}_${log.diastolic}_${log.pulse}`;
+
+    if (seenIds.has(logId) || (timeKey && seenKeys.has(contentKey))) {
+      continue;
+    }
+    seenIds.add(logId);
+    if (timeKey) seenKeys.add(contentKey);
+    result.push(log);
+  }
+
+  return result.sort((a, b) => new Date(a.logged_at).getTime() - new Date(b.logged_at).getTime());
+}
+
+// Deduplication helper for Weight logs
+export function deduplicateWeightLogs(logs: WeightLog[]): WeightLog[] {
+  const seenIds = new Set<string>();
+  const seenKeys = new Set<string>();
+  const result: WeightLog[] = [];
+
+  for (const log of logs) {
+    if (!log || !log.id) continue;
+    const logId = String(log.id);
+    const timeKey = log.logged_at ? new Date(log.logged_at).toISOString() : '';
+    const contentKey = `${timeKey}_${log.weight}`;
+
+    if (seenIds.has(logId) || (timeKey && seenKeys.has(contentKey))) {
+      continue;
+    }
+    seenIds.add(logId);
+    if (timeKey) seenKeys.add(contentKey);
+    result.push(log);
+  }
+
+  return result.sort((a, b) => new Date(a.logged_at).getTime() - new Date(b.logged_at).getTime());
+}
+
 export const localDb = {
   getBPLogs(): BloodPressureLog[] {
     const data = localStorage.getItem(KEYS.BP);
-    return data ? JSON.parse(data) : [];
+    const raw: BloodPressureLog[] = data ? JSON.parse(data) : [];
+    const deduplicated = deduplicateBPLogs(raw);
+    if (raw.length !== deduplicated.length) {
+      localStorage.setItem(KEYS.BP, JSON.stringify(deduplicated));
+    }
+    return deduplicated;
   },
 
   saveBPLog(systolic: number, diastolic: number, pulse: number, loggedAt: string, notes: string, existingId?: string): BloodPressureLog {
-    const logs = this.getBPLogs();
+    let logs = this.getBPLogs();
+    const targetId = existingId || generateUUID();
     const newLog: BloodPressureLog = {
-      id: existingId || generateUUID(),
+      id: targetId,
       user_id: 'local-user',
       systolic,
       diastolic,
@@ -164,53 +216,82 @@ export const localDb = {
       notes: notes.trim(),
       created_at: new Date().toISOString()
     };
-    const existingIndex = logs.findIndex(l => l.id === newLog.id);
+
+    let existingIndex = logs.findIndex(l => String(l.id) === String(targetId));
+    if (existingIndex < 0) {
+      // Check if duplicate exists by timestamp and values
+      const targetTime = new Date(loggedAt).getTime();
+      existingIndex = logs.findIndex(l => {
+        const t = new Date(l.logged_at).getTime();
+        return Math.abs(t - targetTime) < 1000 &&
+          Number(l.systolic) === systolic &&
+          Number(l.diastolic) === diastolic &&
+          Number(l.pulse) === pulse;
+      });
+    }
+
     if (existingIndex >= 0) {
-      logs[existingIndex] = newLog;
+      logs[existingIndex] = { ...logs[existingIndex], ...newLog, id: targetId };
     } else {
       logs.push(newLog);
     }
-    // Sort chronologically
-    logs.sort((a, b) => new Date(a.logged_at).getTime() - new Date(b.logged_at).getTime());
+
+    logs = deduplicateBPLogs(logs);
     localStorage.setItem(KEYS.BP, JSON.stringify(logs));
-    return newLog;
+    return logs.find(l => String(l.id) === String(targetId)) || newLog;
   },
 
   deleteBPLog(id: string): void {
     const logs = this.getBPLogs();
-    const filtered = logs.filter(log => log.id !== id);
+    const filtered = logs.filter(log => String(log.id) !== String(id));
     localStorage.setItem(KEYS.BP, JSON.stringify(filtered));
   },
 
   getWeightLogs(): WeightLog[] {
     const data = localStorage.getItem(KEYS.WEIGHT);
-    return data ? JSON.parse(data) : [];
+    const raw: WeightLog[] = data ? JSON.parse(data) : [];
+    const deduplicated = deduplicateWeightLogs(raw);
+    if (raw.length !== deduplicated.length) {
+      localStorage.setItem(KEYS.WEIGHT, JSON.stringify(deduplicated));
+    }
+    return deduplicated;
   },
 
   saveWeightLog(weight: number, loggedAt: string, notes: string, existingId?: string): WeightLog {
-    const logs = this.getWeightLogs();
+    let logs = this.getWeightLogs();
+    const targetId = existingId || generateUUID();
     const newLog: WeightLog = {
-      id: existingId || generateUUID(),
+      id: targetId,
       user_id: 'local-user',
       weight,
       logged_at: loggedAt,
       notes: notes.trim(),
       created_at: new Date().toISOString()
     };
-    const existingIndex = logs.findIndex(l => l.id === newLog.id);
+
+    let existingIndex = logs.findIndex(l => String(l.id) === String(targetId));
+    if (existingIndex < 0) {
+      const targetTime = new Date(loggedAt).getTime();
+      existingIndex = logs.findIndex(l => {
+        const t = new Date(l.logged_at).getTime();
+        return Math.abs(t - targetTime) < 1000 && Number(l.weight) === weight;
+      });
+    }
+
     if (existingIndex >= 0) {
-      logs[existingIndex] = newLog;
+      logs[existingIndex] = { ...logs[existingIndex], ...newLog, id: targetId };
     } else {
       logs.push(newLog);
     }
-    logs.sort((a, b) => new Date(a.logged_at).getTime() - new Date(b.logged_at).getTime());
+
+    logs = deduplicateWeightLogs(logs);
     localStorage.setItem(KEYS.WEIGHT, JSON.stringify(logs));
-    return newLog;
+    return logs.find(l => String(l.id) === String(targetId)) || newLog;
   },
 
   deleteWeightLog(id: string): void {
     const logs = this.getWeightLogs();
-    const filtered = logs.filter(log => log.id !== id);
+    const filtered = logs.filter(log => String(log.id) !== String(id));
     localStorage.setItem(KEYS.WEIGHT, JSON.stringify(filtered));
   },
 
@@ -242,11 +323,15 @@ export const localDb = {
       focus,
       created_at: new Date().toISOString()
     };
-    // Keep only the last 30 tips to prevent unbounded growth
     logs.unshift(newLog);
     if (logs.length > 30) logs.pop();
     localStorage.setItem(KEYS.AI_TIPS, JSON.stringify(logs));
     return newLog;
+  },
+
+  clearAllData(): void {
+    localStorage.setItem(KEYS.BP, JSON.stringify([]));
+    localStorage.setItem(KEYS.WEIGHT, JSON.stringify([]));
   },
 
   resetAll(): void {

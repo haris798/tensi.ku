@@ -160,7 +160,7 @@ export default function App() {
           type: "bp",
           id: log.id,
           date: new Date(log.logged_at),
-          valText: `${log.systolic}/${log.diastolic}  : ${log.pulse} bpm`,
+          valText: `${log.systolic}/${log.diastolic}  : ${log.pulse}`,
           notes: log.notes,
           raw: log,
         });
@@ -429,14 +429,14 @@ export default function App() {
 
       try {
         // Local-first: always save to localStorage
-        localDb.saveBPLog(sys, dia, pulse, new Date(bpDate).toISOString(), bpNotes);
+        const newLog = localDb.saveBPLog(sys, dia, pulse, new Date(bpDate).toISOString(), bpNotes);
         setBpLogs(localDb.getBPLogs());
 
         // If Supabase connected, also queue for background sync
         if (getSupabase() && navigator.onLine) {
           const userId = syncEngine.getLastUserId();
           if (userId) {
-            syncEngine.localAddBP(userId, sys, dia, pulse, new Date(bpDate).toISOString(), bpNotes);
+            syncEngine.localAddBP(userId, sys, dia, pulse, new Date(bpDate).toISOString(), bpNotes, String(newLog.id));
             setTimeout(handleBackgroundSync, 500);
           }
         }
@@ -468,14 +468,14 @@ export default function App() {
 
       try {
         // Local-first: always save to localStorage
-        localDb.saveWeightLog(w, new Date(weightDate).toISOString(), weightNotes);
+        const newLog = localDb.saveWeightLog(w, new Date(weightDate).toISOString(), weightNotes);
         setWeightLogs(localDb.getWeightLogs());
 
         // If Supabase connected, also queue for background sync
         if (getSupabase() && navigator.onLine) {
           const userId = syncEngine.getLastUserId();
           if (userId) {
-            syncEngine.localAddWeight(userId, w, new Date(weightDate).toISOString(), weightNotes);
+            syncEngine.localAddWeight(userId, w, new Date(weightDate).toISOString(), weightNotes, newLog.id);
             setTimeout(handleBackgroundSync, 500);
           }
         }
@@ -634,8 +634,8 @@ export default function App() {
 
       // Replace all local data with remote data
       if (fresh.bp.length > 0 || fresh.weight.length > 0 || fresh.profile) {
-        // Reset everything first
-        localDb.resetAll();
+        // Clear local logs first without bringing back dummy data
+        localDb.clearAllData();
 
         // Overwrite with Supabase data
         fresh.bp.forEach((log) => localDb.saveBPLog(Number(log.systolic), Number(log.diastolic), Number(log.pulse), log.logged_at, log.notes || "", String(log.id)));
@@ -713,8 +713,24 @@ export default function App() {
           )
         ) {
           try {
-            result.bp.forEach((item) => localDb.saveBPLog(item.systolic, item.diastolic, item.pulse, item.logged_at, item.notes));
-            result.weight.forEach((item) => localDb.saveWeightLog(item.weight, item.logged_at, item.notes));
+            result.bp.forEach((item) => {
+              const newLog = localDb.saveBPLog(item.systolic, item.diastolic, item.pulse, item.logged_at, item.notes);
+              if (navigator.onLine && getSupabase()) {
+                const userId = syncEngine.getLastUserId();
+                if (userId) {
+                  syncEngine.localAddBP(userId, item.systolic, item.diastolic, item.pulse, item.logged_at, item.notes, String(newLog.id));
+                }
+              }
+            });
+            result.weight.forEach((item) => {
+              const newLog = localDb.saveWeightLog(item.weight, item.logged_at, item.notes);
+              if (navigator.onLine && getSupabase()) {
+                const userId = syncEngine.getLastUserId();
+                if (userId) {
+                  syncEngine.localAddWeight(userId, item.weight, item.logged_at, item.notes, newLog.id);
+                }
+              }
+            });
             setBpLogs(localDb.getBPLogs());
             setWeightLogs(localDb.getWeightLogs());
             showSuccessAlert(`Berhasil mengimpor ${totalBp} rekam tensi & ${totalWeight} rekam berat badan!`);
@@ -1144,13 +1160,13 @@ export default function App() {
                     </tr>
                   ) : (
                     paginatedLogs.map((item) => {
-                      const localTimeStr = new Date(item.date).toLocaleDateString("id-ID", {
-                        weekday: "long",
-                        day: "numeric",
-                        month: "long",
-                        year: "numeric",
-                      });
-                      const hourStr = new Date(item.date).toLocaleTimeString("id-ID", {
+                      const d = new Date(item.date);
+                      const weekday = d.toLocaleDateString("id-ID", { weekday: "long" });
+                      const day = String(d.getDate()).padStart(2, "0");
+                      const month = String(d.getMonth() + 1).padStart(2, "0");
+                      const year = d.getFullYear();
+                      const localTimeStr = `${weekday}, ${day}.${month}.${year}`;
+                      const hourStr = d.toLocaleTimeString("id-ID", {
                         hour: "2-digit",
                         minute: "2-digit",
                       });

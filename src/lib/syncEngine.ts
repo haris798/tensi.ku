@@ -1,5 +1,6 @@
 import { getSupabase } from './supabase';
 import { BloodPressureLog, WeightLog, UserProfile } from '../types';
+import { deduplicateBPLogs, deduplicateWeightLogs } from './localDb';
 
 export interface SyncAction {
   id: string;
@@ -43,12 +44,14 @@ export const syncEngine = {
   // Read caches
   getCachedBP(userId: string): BloodPressureLog[] {
     const data = localStorage.getItem(KEYS.BP(userId));
-    return data ? JSON.parse(data) : [];
+    const raw: BloodPressureLog[] = data ? JSON.parse(data) : [];
+    return deduplicateBPLogs(raw);
   },
 
   getCachedWeight(userId: string): WeightLog[] {
     const data = localStorage.getItem(KEYS.WEIGHT(userId));
-    return data ? JSON.parse(data) : [];
+    const raw: WeightLog[] = data ? JSON.parse(data) : [];
+    return deduplicateWeightLogs(raw);
   },
 
   getCachedProfile(userId: string): UserProfile | null {
@@ -58,11 +61,13 @@ export const syncEngine = {
 
   // Save caches
   setCachedBP(userId: string, logs: BloodPressureLog[]): void {
-    localStorage.setItem(KEYS.BP(userId), JSON.stringify(logs));
+    const deduplicated = deduplicateBPLogs(logs);
+    localStorage.setItem(KEYS.BP(userId), JSON.stringify(deduplicated));
   },
 
   setCachedWeight(userId: string, logs: WeightLog[]): void {
-    localStorage.setItem(KEYS.WEIGHT(userId), JSON.stringify(logs));
+    const deduplicated = deduplicateWeightLogs(logs);
+    localStorage.setItem(KEYS.WEIGHT(userId), JSON.stringify(deduplicated));
   },
 
   setCachedProfile(userId: string, profile: UserProfile | null): void {
@@ -98,9 +103,10 @@ export const syncEngine = {
 
   // Local-first Operations
   localAddBP(userId: string, systolic: number, diastolic: number, pulse: number, loggedAt: string, notes: string, existingId?: string): BloodPressureLog {
-    const logs = this.getCachedBP(userId);
+    let logs = this.getCachedBP(userId);
+    const targetId = existingId || generateUUID();
     const newLog: BloodPressureLog = {
-      id: existingId || generateUUID(),
+      id: targetId,
       user_id: userId,
       systolic,
       diastolic,
@@ -109,50 +115,106 @@ export const syncEngine = {
       notes: notes.trim(),
       created_at: new Date().toISOString(),
     };
-    logs.push(newLog);
-    // Sort chronologically
-    logs.sort((a, b) => new Date(a.logged_at).getTime() - new Date(b.logged_at).getTime());
+
+    let existingIndex = logs.findIndex((l) => String(l.id) === String(targetId));
+    if (existingIndex < 0) {
+      const targetTime = new Date(loggedAt).getTime();
+      existingIndex = logs.findIndex((l) => {
+        const t = new Date(l.logged_at).getTime();
+        return Math.abs(t - targetTime) < 1000 &&
+          Number(l.systolic) === systolic &&
+          Number(l.diastolic) === diastolic &&
+          Number(l.pulse) === pulse;
+      });
+    }
+
+    if (existingIndex >= 0) {
+      logs[existingIndex] = { ...logs[existingIndex], ...newLog, id: targetId };
+    } else {
+      logs.push(newLog);
+    }
+
+    logs = deduplicateBPLogs(logs);
     this.setCachedBP(userId, logs);
     
-    // Add to background sync queue
-    this.addToQueue(userId, 'ADD_BP', newLog);
+    // Check if this log is already queued
+    const queue = this.getQueue(userId);
+    const alreadyQueued = queue.some(
+      (a) => a.type === 'ADD_BP' && String(a.payload.id) === String(targetId)
+    );
+    if (!alreadyQueued) {
+      this.addToQueue(userId, 'ADD_BP', newLog);
+    }
     return newLog;
   },
 
   localDeleteBP(userId: string, id: string): void {
     const logs = this.getCachedBP(userId);
-    const filtered = logs.filter((log) => log.id !== id);
+    const filtered = logs.filter((log) => String(log.id) !== String(id));
     this.setCachedBP(userId, filtered);
 
-    // Add to background sync queue
+    // Remove un-synced ADD_BP action for this item from queue
+    let queue = this.getQueue(userId);
+    queue = queue.filter(
+      (a) => !(a.type === 'ADD_BP' && String(a.payload.id) === String(id))
+    );
+    this.setQueue(userId, queue);
+
+    // Add DELETE_BP action to background sync queue
     this.addToQueue(userId, 'DELETE_BP', { id });
   },
 
   localAddWeight(userId: string, weight: number, loggedAt: string, notes: string, existingId?: string): WeightLog {
-    const logs = this.getCachedWeight(userId);
+    let logs = this.getCachedWeight(userId);
+    const targetId = existingId || generateUUID();
     const newLog: WeightLog = {
-      id: existingId || generateUUID(),
+      id: targetId,
       user_id: userId,
       weight,
       logged_at: loggedAt,
       notes: notes.trim(),
       created_at: new Date().toISOString(),
     };
-    logs.push(newLog);
-    logs.sort((a, b) => new Date(a.logged_at).getTime() - new Date(b.logged_at).getTime());
+
+    let existingIndex = logs.findIndex((l) => String(l.id) === String(targetId));
+    if (existingIndex < 0) {
+      const targetTime = new Date(loggedAt).getTime();
+      existingIndex = logs.findIndex((l) => {
+        const t = new Date(l.logged_at).getTime();
+        return Math.abs(t - targetTime) < 1000 && Number(l.weight) === weight;
+      });
+    }
+
+    if (existingIndex >= 0) {
+      logs[existingIndex] = { ...logs[existingIndex], ...newLog, id: targetId };
+    } else {
+      logs.push(newLog);
+    }
+
+    logs = deduplicateWeightLogs(logs);
     this.setCachedWeight(userId, logs);
 
-    // Add to background sync queue
-    this.addToQueue(userId, 'ADD_WEIGHT', newLog);
+    const queue = this.getQueue(userId);
+    const alreadyQueued = queue.some(
+      (a) => a.type === 'ADD_WEIGHT' && String(a.payload.id) === String(targetId)
+    );
+    if (!alreadyQueued) {
+      this.addToQueue(userId, 'ADD_WEIGHT', newLog);
+    }
     return newLog;
   },
 
   localDeleteWeight(userId: string, id: string): void {
     const logs = this.getCachedWeight(userId);
-    const filtered = logs.filter((log) => log.id !== id);
+    const filtered = logs.filter((log) => String(log.id) !== String(id));
     this.setCachedWeight(userId, filtered);
 
-    // Add to background sync queue
+    let queue = this.getQueue(userId);
+    queue = queue.filter(
+      (a) => !(a.type === 'ADD_WEIGHT' && String(a.payload.id) === String(id))
+    );
+    this.setQueue(userId, queue);
+
     this.addToQueue(userId, 'DELETE_WEIGHT', { id });
   },
 
@@ -170,7 +232,6 @@ export const syncEngine = {
     profile.updated_at = new Date().toISOString();
     this.setCachedProfile(userId, profile);
 
-    // Add to background sync queue
     this.addToQueue(userId, 'UPDATE_PROFILE', profile);
     return profile;
   },
@@ -182,15 +243,21 @@ export const syncEngine = {
     switch (type) {
       case 'ADD_BP': {
         const payloadForDb = { ...payload };
-        if (typeof payloadForDb.id === 'string') delete payloadForDb.id;
+        // Upsert or insert into Supabase preserving the client UUID
         const { error } = await client
           .from('blood_pressure_logs')
-          .insert(payloadForDb);
-        if (error) throw error;
+          .upsert(payloadForDb, { onConflict: 'id' });
+        if (error) {
+          // Fallback to insert if upsert fails
+          const { error: insertErr } = await client
+            .from('blood_pressure_logs')
+            .insert(payloadForDb);
+          if (insertErr) throw insertErr;
+        }
         break;
       }
       case 'DELETE_BP': {
-        if (typeof payload.id === 'string') break; // Local only
+        if (!payload.id) break;
         const { error } = await client
           .from('blood_pressure_logs')
           .delete()
@@ -200,15 +267,19 @@ export const syncEngine = {
       }
       case 'ADD_WEIGHT': {
         const payloadForDb = { ...payload };
-        if (typeof payloadForDb.id === 'string') delete payloadForDb.id;
         const { error } = await client
           .from('weight_logs')
-          .insert(payloadForDb);
-        if (error) throw error;
+          .upsert(payloadForDb, { onConflict: 'id' });
+        if (error) {
+          const { error: insertErr } = await client
+            .from('weight_logs')
+            .insert(payloadForDb);
+          if (insertErr) throw insertErr;
+        }
         break;
       }
       case 'DELETE_WEIGHT': {
-        if (typeof payload.id === 'string') break; // Local only
+        if (!payload.id) break;
         const { error } = await client
           .from('weight_logs')
           .delete()
@@ -221,7 +292,6 @@ export const syncEngine = {
           .from('profiles')
           .upsert(payload);
         if (error) {
-          // If the column height is missing in older databases, try upserting without height
           if (error.message && (error.message.includes('height') || error.message.includes('column'))) {
             const { height, ...safePayload } = payload;
             const { error: retryError } = await client
@@ -262,7 +332,6 @@ export const syncEngine = {
       return { success: true, syncedCount };
     } catch (err: any) {
       console.error('Background sync failed at item:', err);
-      // Save remaining queue
       this.setQueue(userId, remainingQueue);
       return { success: false, syncedCount, error: err };
     }
@@ -287,7 +356,6 @@ export const syncEngine = {
 
     let finalProfile: UserProfile | null = profileData;
     if (!profileData) {
-      // Fallback/auto-create if needed
       finalProfile = {
         id: userId,
         full_name: 'Pengguna',
@@ -315,8 +383,8 @@ export const syncEngine = {
 
     if (wErr) throw wErr;
 
-    const bpLogs = bpData || [];
-    const weightLogs = wData || [];
+    const bpLogs = deduplicateBPLogs(bpData || []);
+    const weightLogs = deduplicateWeightLogs(wData || []);
 
     // Cache them!
     this.setCachedProfile(userId, finalProfile);
