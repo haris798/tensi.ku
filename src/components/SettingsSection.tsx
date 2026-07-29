@@ -1,5 +1,5 @@
 import { useRef, FormEvent, ChangeEvent } from "react";
-import { User, Download, Upload, Activity } from "lucide-react";
+import { User, Download, Upload, Activity, Save } from "lucide-react";
 import { UserProfile } from "../types";
 
 interface SettingsSectionProps {
@@ -45,21 +45,25 @@ export default function SettingsSection({
     <div className="max-w-2xl mx-auto space-y-6 animate-fade-in">
       {/* Profile Card */}
       <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 p-6 shadow-sm">
-        <div className="flex items-center gap-3 mb-6">
-          <div className="p-2.5 bg-indigo-50 dark:bg-indigo-900/30 rounded-xl text-indigo-600 dark:text-indigo-400">
-            <User className="h-5 w-5" />
-          </div>
-          <div>
-            <h3 className="text-base font-extrabold text-slate-800 dark:text-slate-100 tracking-tight">
-              Profil Pengguna
-            </h3>
-            <p className="text-xs text-slate-500 dark:text-slate-400 font-medium">
-              Atur nama, target berat badan, dan tinggi badan
-            </p>
-          </div>
-        </div>
-
         <form onSubmit={onUpdateProfile} className="space-y-4">
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center gap-3">
+              <div className="p-2.5 bg-indigo-50 dark:bg-indigo-900/30 rounded-xl text-indigo-600 dark:text-indigo-400">
+                <User className="h-5 w-5" />
+              </div>
+              <h3 className="text-base font-extrabold text-slate-800 dark:text-slate-100 tracking-tight">
+                Profil Pengguna
+              </h3>
+            </div>
+            <button
+              type="submit"
+              title="Simpan Profil"
+              className="p-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white shadow-md active:scale-95 transition-all flex items-center justify-center cursor-pointer"
+            >
+              <Save className="h-5 w-5" />
+            </button>
+          </div>
+
           <div>
             <label className="block text-xs font-semibold text-slate-500 dark:text-slate-400 tracking-wider mb-1.5">
               Nama Lengkap
@@ -102,13 +106,6 @@ export default function SettingsSection({
               />
             </div>
           </div>
-
-          <button
-            type="submit"
-            className="w-full rounded-xl bg-indigo-600 py-2.5 text-sm font-bold text-white shadow-lg hover:bg-indigo-700 active:scale-[0.98] transition-all cursor-pointer"
-          >
-            Simpan Profil
-          </button>
         </form>
       </div>
 
@@ -128,23 +125,23 @@ export default function SettingsSection({
           </div>
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <div className="grid grid-cols-2 gap-3">
           <button
             type="button"
             onClick={onExportData}
-            className="flex items-center justify-center gap-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-4 py-3 text-sm font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-900/50 active:scale-[0.98] transition-all cursor-pointer"
+            className="flex items-center justify-center gap-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 sm:px-4 py-3 text-xs sm:text-sm font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-900/50 active:scale-[0.98] transition-all cursor-pointer"
           >
-            <Download className="h-4 w-4 text-emerald-500" />
-            Ekspor JSON
+            <Download className="h-4 w-4 text-emerald-500 shrink-0" />
+            <span>Ekspor JSON</span>
           </button>
 
           <button
             type="button"
             onClick={handleImportClick}
-            className="flex items-center justify-center gap-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-4 py-3 text-sm font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-900/50 active:scale-[0.98] transition-all cursor-pointer"
+            className="flex items-center justify-center gap-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 sm:px-4 py-3 text-xs sm:text-sm font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-900/50 active:scale-[0.98] transition-all cursor-pointer"
           >
-            <Upload className="h-4 w-4 text-indigo-500" />
-            Impor CSV
+            <Upload className="h-4 w-4 text-indigo-500 shrink-0" />
+            <span>Impor CSV</span>
           </button>
           <input
             ref={fileInputRef}
@@ -154,28 +151,6 @@ export default function SettingsSection({
             className="hidden"
           />
         </div>
-      </div>
-
-      {/* About Card */}
-      <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 p-6 shadow-sm">
-        <div className="flex items-center gap-3 mb-4">
-          <div className="p-2.5 bg-amber-50 dark:bg-amber-900/30 rounded-xl text-amber-600 dark:text-amber-400">
-            <Activity className="h-5 w-5" />
-          </div>
-          <div>
-            <h3 className="text-base font-extrabold text-slate-800 dark:text-slate-100 tracking-tight">
-              Tentang tensi.ku
-            </h3>
-            <p className="text-xs text-slate-500 dark:text-slate-400 font-medium">
-              Asisten monitoring kesehatan pribadi Anda
-            </p>
-          </div>
-        </div>
-        <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
-          Aplikasi pencatat tensi darah dan berat badan harian dengan dukungan
-          AI (Google Gemini) untuk tips kesehatan personal. Data dapat
-          disinkronisasikan ke Supabase cloud storage.
-        </p>
       </div>
     </div>
   );

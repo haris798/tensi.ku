@@ -14,13 +14,12 @@ import {
   AITipLog,
 } from "./types";
 import { syncEngine } from "./lib/syncEngine";
-import { exportBPToCSV, exportWeightToCSV, parseCSV } from "./lib/csvHelper";
+import { parseCSV } from "./lib/csvHelper";
 import { generateLocalTip, getBPCategoryDetails } from "./lib/helpers";
 
 // Icons
 import {
   Activity,
-  Heart,
   Plus,
   Trash2,
   Database,
@@ -28,7 +27,6 @@ import {
   CheckCircle,
   Search,
   Download,
-  Upload,
   TrendingUp,
   RefreshCw,
   LayoutDashboard,
@@ -37,7 +35,6 @@ import {
   Sun,
   Moon,
   FileText,
-  Scale,
   Copy,
   Sparkles,
   CloudDownload,
@@ -83,7 +80,6 @@ export default function App() {
     "monthly"
   );
   const [actionSuccess, setActionSuccess] = useState<string | null>(null);
-  const [isDragging, setIsDragging] = useState(false);
   const [isManualSyncing, setIsManualSyncing] = useState(false);
 
   // Refs for BP input auto-focus
@@ -164,7 +160,7 @@ export default function App() {
           type: "bp",
           id: log.id,
           date: new Date(log.logged_at),
-          valText: `${log.systolic}/${log.diastolic} mmHg (Nadi: ${log.pulse} bpm)`,
+          valText: `${log.systolic}/${log.diastolic}  : ${log.pulse} bpm`,
           notes: log.notes,
           raw: log,
         });
@@ -1045,14 +1041,8 @@ export default function App() {
             <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-6">
               <h2 className="text-base font-extrabold text-slate-800 dark:text-slate-100 tracking-tight flex items-center gap-1.5">
                 <FileText className="h-5 w-5 text-indigo-600" />
-                Daftar Riwayat Rekam Medis Mandiri
+                Riwayat Tensi
               </h2>
-              {getSupabase() && (
-                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-emerald-50 dark:bg-emerald-950/30 text-emerald-600 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800/50">
-                  <Database className="h-3.5 w-3.5 text-emerald-500" />
-                  Supabase Terhubung
-                </span>
-              )}
             </div>
 
             {/* Filters & Actions */}
@@ -1139,7 +1129,6 @@ export default function App() {
                 <thead>
                   <tr className="bg-slate-50 dark:bg-slate-800/60 border-b border-slate-200 dark:border-slate-700/80 font-bold text-slate-500 dark:text-slate-400 tracking-wider text-[10px]">
                     <th className="px-5 py-3.5">Tanggal & Waktu</th>
-                    <th className="px-5 py-3.5">Jenis Rekaman</th>
                     <th className="px-5 py-3.5">Hasil Pengukuran</th>
                     <th className="px-5 py-3.5">Kategori / Evaluasi</th>
                     <th className="px-5 py-3.5">Catatan Tambahan</th>
@@ -1149,7 +1138,7 @@ export default function App() {
                 <tbody className="divide-y divide-slate-100 dark:divide-slate-800/60">
                   {logsToShow.length === 0 ? (
                     <tr>
-                      <td colSpan={6} className="text-center py-12 text-slate-400 dark:text-slate-500 italic">
+                      <td colSpan={5} className="text-center py-12 text-slate-400 dark:text-slate-500 italic">
                         Tidak ditemukan riwayat rekam medis harian yang sesuai.
                       </td>
                     </tr>
@@ -1171,17 +1160,6 @@ export default function App() {
                           <td className="px-5 py-3.5">
                             <p className="font-bold text-slate-700 dark:text-slate-200">{localTimeStr}</p>
                             <p className="text-[10px] text-slate-400 dark:text-slate-500 font-semibold font-mono mt-0.5">{hourStr}</p>
-                          </td>
-                          <td className="px-5 py-3.5">
-                            {item.type === "bp" ? (
-                              <span className="inline-flex items-center gap-1.5 font-bold text-rose-600 dark:text-rose-400 bg-rose-50 dark:bg-rose-950/20 px-2.5 py-1 rounded-full text-[10px] border border-rose-100 dark:border-rose-900/30">
-                                <Heart className="h-3 w-3 fill-rose-100 dark:fill-rose-950/40" /> Tensi Darah
-                              </span>
-                            ) : (
-                              <span className="inline-flex items-center gap-1.5 font-bold text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/20 px-2.5 py-1 rounded-full text-[10px] border border-amber-100 dark:border-amber-900/30">
-                                <Scale className="h-3 w-3" /> Berat Badan
-                              </span>
-                            )}
                           </td>
                           <td className="px-5 py-3.5">
                             <div className="flex items-center gap-2">
@@ -1282,85 +1260,6 @@ export default function App() {
               onExportData={exportLocalData}
               onImportCSV={handleImportCSVFile}
             />
-
-            {/* CSV Export Section (separate from SettingsSection) */}
-            <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 p-6 shadow-sm">
-              <h3 className="text-base font-extrabold text-slate-800 dark:text-slate-100 tracking-tight flex items-center gap-2 mb-2">
-                <FileText className="h-5 w-5 text-indigo-600" />
-                Ekspor & Impor Data (CSV)
-              </h3>
-              <p className="text-[11px] text-slate-500 dark:text-slate-400 mb-4 leading-normal">
-                Ekspor data Anda ke format CSV standar untuk dianalisis di Excel atau Google Sheets.
-              </p>
-
-              <div className="space-y-4">
-                {/* Export */}
-                <div>
-                  <h4 className="text-[10px] font-bold text-slate-400 tracking-wider mb-2">Ekspor Riwayat</h4>
-                  <div className="grid grid-cols-2 gap-2">
-                    <button
-                      type="button"
-                      onClick={() => exportBPToCSV(bpLogs)}
-                      className="p-3 bg-rose-50/50 hover:bg-rose-50 border border-rose-100 text-rose-700 hover:text-rose-800 rounded-xl text-xs font-bold transition-all flex flex-col items-center gap-1.5 active:scale-98 cursor-pointer text-center"
-                    >
-                      <Heart className="h-4 w-4 text-rose-500" />
-                      <span>Ekspor Tensi</span>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => exportWeightToCSV(weightLogs)}
-                      className="p-3 bg-amber-50/50 hover:bg-amber-50 border border-amber-100 text-amber-700 hover:text-amber-800 rounded-xl text-xs font-bold transition-all flex flex-col items-center gap-1.5 active:scale-98 cursor-pointer text-center"
-                    >
-                      <Scale className="h-4 w-4 text-amber-500" />
-                      <span>Ekspor Berat Badan</span>
-                    </button>
-                  </div>
-                </div>
-
-                {/* Import */}
-                <div>
-                  <h4 className="text-[10px] font-bold text-slate-400 tracking-wider mb-2">Impor dari CSV</h4>
-                  <div
-                    onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
-                    onDragLeave={(e) => { e.preventDefault(); setIsDragging(false); }}
-                    onDrop={(e) => {
-                      e.preventDefault();
-                      setIsDragging(false);
-                      const file = e.dataTransfer.files?.[0];
-                      if (file) {
-                        if (file.name.endsWith(".csv")) handleImportCSVFile(file);
-                        else alert("Hanya mendukung file format .csv");
-                      }
-                    }}
-                    onClick={() => document.getElementById("csv-file-input")?.click()}
-                    className={`border-2 border-dashed rounded-2xl p-5 flex flex-col items-center justify-center text-center cursor-pointer transition-all ${
-                      isDragging
-                        ? "border-indigo-500 bg-indigo-50/40 text-indigo-700"
-                        : "border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900/50 hover:bg-slate-100 dark:hover:bg-slate-800 hover:border-slate-300 text-slate-500 dark:text-slate-400"
-                    }`}
-                  >
-                    <input
-                      id="csv-file-input"
-                      type="file"
-                      accept=".csv"
-                      className="hidden"
-                      onChange={(e) => {
-                        const file = e.target.files?.[0];
-                        if (file) handleImportCSVFile(file);
-                      }}
-                    />
-                    <Upload className={`h-6 w-6 mb-2 ${isDragging ? "text-indigo-600 animate-bounce" : "text-slate-400"}`} />
-                    <p className="text-xs font-bold">Seret & letakkan file .csv di sini</p>
-                    <p className="text-[10px] text-slate-400 mt-1">atau klik untuk memilih file dari komputer Anda</p>
-                    <div className="mt-3 p-1.5 bg-slate-100 dark:bg-slate-800 rounded-lg text-[9px] text-slate-400 text-left font-mono w-full">
-                      <p className="font-bold mb-0.5 text-center">Format kolom didukung:</p>
-                      <p>• Tensi: Tanggal, Sistolik, Diastolik, Nadi, Catatan</p>
-                      <p>• Berat: Tanggal, Berat Badan, Catatan</p>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
 
             {/* Database Schema Setup */}
             <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 p-6 shadow-sm">

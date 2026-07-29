@@ -1,5 +1,5 @@
 import { RefObject, FormEvent } from "react";
-import { Heart, Scale, Activity } from "lucide-react";
+import { Heart, Scale, Activity, Save } from "lucide-react";
 
 interface InputFormsProps {
   // BP Form
@@ -89,21 +89,25 @@ export default function InputForms({
       {/* BP Form */}
       {currentTab === "bp" && (
         <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 p-6 shadow-sm">
-          <div className="flex items-center gap-3 mb-6">
-            <div className="p-2.5 bg-rose-50 dark:bg-rose-950/30 rounded-xl text-rose-600 dark:text-rose-400">
-              <Activity className="h-5 w-5" />
-            </div>
-            <div>
-              <h3 className="text-base font-extrabold text-slate-800 dark:text-slate-100 tracking-tight">
-                Catat Tensi Darah
-              </h3>
-              <p className="text-xs text-slate-500 dark:text-slate-400 font-medium">
-                    Masukkan hasil pengukuran tensi Anda
-                  </p>
-                </div>
-              </div>
-
           <form onSubmit={onAddBp} className="space-y-4">
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-3">
+                <div className="p-2.5 bg-rose-50 dark:bg-rose-950/30 rounded-xl text-rose-600 dark:text-rose-400">
+                  <Activity className="h-5 w-5" />
+                </div>
+                <h3 className="text-base font-extrabold text-slate-800 dark:text-slate-100 tracking-tight">
+                  Catat Tensi Darah
+                </h3>
+              </div>
+              <button
+                type="submit"
+                title="Simpan Catatan Tensi"
+                className="p-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white shadow-md active:scale-95 transition-all flex items-center justify-center cursor-pointer"
+              >
+                <Save className="h-5 w-5" />
+              </button>
+            </div>
+
             <div className="grid grid-cols-3 gap-3">
               <div>
                 <label className="block text-xs font-semibold text-slate-500 dark:text-slate-400 tracking-wider mb-1.5">
@@ -179,14 +183,6 @@ export default function InputForms({
                 className="w-full rounded-xl border border-slate-200 dark:border-slate-700 px-4 py-2.5 text-sm outline-none focus:border-indigo-500 dark:focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100 dark:focus:ring-indigo-900/30 transition-all"
               />
             </div>
-
-            <button
-              type="submit"
-              className="w-full rounded-xl bg-indigo-600 py-3 text-sm font-bold text-white shadow-lg hover:bg-indigo-700 active:scale-[0.98] transition-all flex items-center justify-center gap-2 cursor-pointer"
-            >
-              <Heart className="h-4 w-4" />
-              Simpan Catatan Tensi
-            </button>
           </form>
         </div>
       )}
@@ -194,21 +190,25 @@ export default function InputForms({
       {/* Weight Form */}
       {currentTab === "weight" && (
         <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 p-6 shadow-sm">
-          <div className="flex items-center gap-3 mb-6">
-            <div className="p-2.5 bg-amber-50 dark:bg-amber-950/30 rounded-xl text-amber-600 dark:text-amber-400">
-              <Scale className="h-5 w-5" />
-            </div>
-            <div>
-              <h3 className="text-base font-extrabold text-slate-800 dark:text-slate-100 tracking-tight">
-                Catat Berat Badan
-              </h3>
-              <p className="text-xs text-slate-500 dark:text-slate-400 font-medium">
-                Rekam perkembangan berat badan Anda
-              </p>
-            </div>
-          </div>
-
           <form onSubmit={onAddWeight} className="space-y-4">
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-3">
+                <div className="p-2.5 bg-amber-50 dark:bg-amber-950/30 rounded-xl text-amber-600 dark:text-amber-400">
+                  <Scale className="h-5 w-5" />
+                </div>
+                <h3 className="text-base font-extrabold text-slate-800 dark:text-slate-100 tracking-tight">
+                  Catat Berat Badan
+                </h3>
+              </div>
+              <button
+                type="submit"
+                title="Simpan Catatan Berat Badan"
+                className="p-2.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-white shadow-md active:scale-95 transition-all flex items-center justify-center cursor-pointer"
+              >
+                <Save className="h-5 w-5" />
+              </button>
+            </div>
+
             <div>
               <label className="block text-xs font-semibold text-slate-500 dark:text-slate-400 tracking-wider mb-1.5">
                 Berat Badan (kg)
@@ -250,14 +250,6 @@ export default function InputForms({
                 className="w-full rounded-xl border border-slate-200 dark:border-slate-700 px-4 py-2.5 text-sm outline-none focus:border-indigo-500 dark:focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100 dark:focus:ring-indigo-900/30 transition-all"
               />
             </div>
-
-            <button
-              type="submit"
-              className="w-full rounded-xl bg-amber-500 py-3 text-sm font-bold text-white shadow-lg hover:bg-amber-600 active:scale-[0.98] transition-all flex items-center justify-center gap-2 cursor-pointer"
-            >
-              <Scale className="h-4 w-4" />
-              Simpan Catatan Berat Badan
-            </button>
           </form>
         </div>
       )}

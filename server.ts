@@ -11,30 +11,50 @@ const PORT = 3000;
 
 app.use(express.json());
 
-// Initialize Gemini SDK with User-Agent and key
-const apiKey = process.env.GEMINI_API_KEY;
-let ai: GoogleGenAI | null = null;
-if (apiKey && apiKey !== "MY_GEMINI_API_KEY" && apiKey.trim() !== "") {
-  ai = new GoogleGenAI({
-    apiKey: apiKey,
-    httpOptions: {
-      headers: {
-        'User-Agent': 'aistudio-build',
-      }
+// Helper to generate server-side local fallback tip when Gemini API is unavailable or invalid
+function getServerFallbackTip(latestBP: any, latestWeight: any) {
+  let tip = "Jaga pola makan seimbang, batasi garam, dan rutin berolahraga ringan 30 menit sehari.";
+  let focus = "Gaya Hidup Sehat";
+
+  if (latestBP) {
+    const sys = Number(latestBP.systolic);
+    const dia = Number(latestBP.diastolic);
+    if (sys >= 140 || dia >= 90) {
+      tip = "Tekanan darah Anda cenderung tinggi. Kurangi asupan garam/natrium, hindari makanan olahan, dan kelola stres.";
+      focus = "Diet Rendah Garam";
+    } else if (sys < 120 && dia < 80) {
+      tip = "Tekanan darah Anda berada pada rentang optimal! Pertahankan pola makan sehat dan kecukupan cairan harian.";
+      focus = "Optimal";
+    } else {
+      tip = "Tekanan darah dalam batas normal. Pertahankan konsumsi sayuran hijau dan aktivitas fisik teratur.";
+      focus = "Pola Hidup Sehat";
     }
-  });
+  } else if (latestWeight) {
+    tip = "Pastikan minum air putih cukup (8 gelas/hari) dan utamakan makanan tinggi serat untuk menjaga berat badan.";
+    focus = "Nutrisi";
+  }
+
+  return { tip, focus: `${focus} (Sistem)` };
 }
 
 // API routes go here FIRST
 app.post("/api/gemini/health-tips", async (req, res) => {
-  try {
-    const { latestBP, latestWeight } = req.body;
+  const { latestBP, latestWeight } = req.body;
+  const currentApiKey = process.env.GEMINI_API_KEY;
 
-    if (!ai) {
-      return res.status(500).json({ 
-        error: "Kunci API Gemini (GEMINI_API_KEY) belum dikonfigurasi pada server." 
-      });
-    }
+  if (!currentApiKey || currentApiKey === "MY_GEMINI_API_KEY" || currentApiKey.trim() === "") {
+    return res.json(getServerFallbackTip(latestBP, latestWeight));
+  }
+
+  try {
+    const ai = new GoogleGenAI({
+      apiKey: currentApiKey.trim(),
+      httpOptions: {
+        headers: {
+          'User-Agent': 'aistudio-build',
+        }
+      }
+    });
 
     // Build context
     let context = "";
@@ -90,22 +110,18 @@ ${context}`,
 
     const text = response.text;
     if (!text) {
-      throw new Error("Tidak ada respon dari model AI.");
+      return res.json(getServerFallbackTip(latestBP, latestWeight));
     }
 
     const result = JSON.parse(text.trim());
+    if (!result.tip || !result.focus) {
+      return res.json(getServerFallbackTip(latestBP, latestWeight));
+    }
+
     res.json(result);
   } catch (error: any) {
-    let errMsg = "API Error";
-    if (error?.message) {
-      errMsg = error.message;
-    } else if (error?.error?.message) {
-      errMsg = error.error.message;
-    }
-    console.warn(`Gemini Health Tips Warning (Fallback triggered): ${errMsg}`);
-    res.status(503).json({ 
-      error: "Gagal menghasilkan tips kesehatan AI, menggunakan fallback lokal." 
-    });
+    // If Gemini API key is invalid or API fails, smoothly return fallback tip without error output
+    res.json(getServerFallbackTip(latestBP, latestWeight));
   }
 });
 
