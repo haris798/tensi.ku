@@ -12,6 +12,8 @@ import {
   WeightLog,
   UserProfile,
   AITipLog,
+  WaterLog,
+  WaterReminderConfig,
 } from "./types";
 import { syncEngine } from "./lib/syncEngine";
 import { parseCSV } from "./lib/csvHelper";
@@ -39,6 +41,7 @@ import {
   Sparkles,
   CloudDownload,
   Printer,
+  Droplet,
 } from "lucide-react";
 
 // Components
@@ -51,6 +54,8 @@ import MonthlyTrendPieChart from "./components/MonthlyTrendPieChart";
 import WeightChart from "./components/WeightChart";
 import SupabaseConfigModal from "./components/SupabaseConfigModal";
 import DoctorReportModal from "./components/DoctorReportModal";
+import WaterReminderModal, { playWaterChime } from "./components/WaterReminderModal";
+import WaterTrackerCard from "./components/WaterTrackerCard";
 
 export default function App() {
   // ── State ────────────────────────────────────────────────
@@ -67,10 +72,76 @@ export default function App() {
   const [weightLogs, setWeightLogs] = useState<WeightLog[]>(() =>
     localDb.getWeightLogs()
   );
+  const [waterLogs, setWaterLogs] = useState<WaterLog[]>(() =>
+    localDb.getWaterLogs()
+  );
+  const [waterConfig, setWaterConfig] = useState<WaterReminderConfig>(() =>
+    localDb.getWaterConfig()
+  );
 
   // UI Controls
   const [isConfigOpen, setIsConfigOpen] = useState(false);
   const [isReportModalOpen, setIsReportModalOpen] = useState(false);
+  const [isWaterModalOpen, setIsWaterModalOpen] = useState(false);
+
+  const handleWaterUpdated = useCallback(() => {
+    setWaterLogs(localDb.getWaterLogs());
+    setWaterConfig(localDb.getWaterConfig());
+  }, []);
+
+  // Background timer for water drink notifications
+  useEffect(() => {
+    if (!waterConfig.enabled) return;
+
+    const checkReminder = () => {
+      const now = new Date();
+      const currentMins = now.getHours() * 60 + now.getMinutes();
+
+      const [startH, startM] = (waterConfig.start_time || "07:00").split(":").map(Number);
+      const [endH, endM] = (waterConfig.end_time || "21:00").split(":").map(Number);
+      const startMins = startH * 60 + startM;
+      const endMins = endH * 60 + endM;
+
+      if (currentMins < startMins || currentMins > endMins) return;
+
+      const todayStr = new Date().toDateString();
+      const todayLogs = waterLogs.filter(
+        (log) => new Date(log.logged_at).toDateString() === todayStr
+      );
+      const lastIntake =
+        todayLogs.length > 0
+          ? new Date(todayLogs[todayLogs.length - 1].logged_at).getTime()
+          : 0;
+      const lastNotified = parseInt(
+        localStorage.getItem("water_last_notified_at") || "0",
+        10
+      );
+      const lastTime = Math.max(lastIntake, lastNotified);
+
+      const intervalMs = (waterConfig.interval_minutes || 120) * 60 * 1000;
+      if (lastTime === 0 || now.getTime() - lastTime >= intervalMs) {
+        localStorage.setItem("water_last_notified_at", String(now.getTime()));
+
+        if (waterConfig.sound_enabled) {
+          playWaterChime();
+        }
+
+        if (
+          typeof Notification !== "undefined" &&
+          Notification.permission === "granted"
+        ) {
+          new Notification("💧 Waktunya Minum Air Putih!", {
+            body: `Cegah dehidrasi! Asupan hari ini: ${localDb.getTodayWaterTotal()}/${waterConfig.daily_goal_ml} ml. Yuk minum segelas air sekarang!`,
+            icon: "/favicon.ico",
+          });
+        }
+      }
+    };
+
+    checkReminder();
+    const intervalId = setInterval(checkReminder, 60000); // Check every 60s
+    return () => clearInterval(intervalId);
+  }, [waterConfig, waterLogs]);
   const [activeMainTab, setActiveMainTab] = useState<
     "dashboard" | "statistik" | "input" | "riwayat" | "seting"
   >("dashboard");
@@ -799,8 +870,17 @@ export default function App() {
               ))}
             </div>
 
-            {/* Config, Report & Dark Mode */}
+            {/* Config, Water, Report & Dark Mode */}
             <div className="flex items-center gap-1.5">
+              <button
+                onClick={() => setIsWaterModalOpen(true)}
+                title="Pengingat & Catatan Minum Air Putih"
+                className="px-2.5 py-2 rounded-xl border border-cyan-200 dark:border-cyan-900/60 bg-cyan-50 dark:bg-cyan-950/30 text-cyan-700 dark:text-cyan-300 hover:bg-cyan-100 dark:hover:bg-cyan-900/50 transition-all active:scale-95 shadow-xs flex items-center gap-1.5 text-xs font-bold cursor-pointer"
+              >
+                <Droplet className="h-4 w-4 text-cyan-600 dark:text-cyan-400 fill-cyan-200 dark:fill-cyan-800" />
+                <span className="hidden sm:inline">Minum Air</span>
+              </button>
+
               <button
                 onClick={() => setIsReportModalOpen(true)}
                 title="Cetak Laporan Dokter (PDF)"
@@ -853,6 +933,14 @@ export default function App() {
               profile={profile}
               onNavigateSettings={() => setActiveMainTab("seting")}
               onOpenReportModal={() => setIsReportModalOpen(true)}
+            />
+
+            {/* Water Tracker & Reminder Card */}
+            <WaterTrackerCard
+              waterLogs={waterLogs}
+              waterConfig={waterConfig}
+              onOpenModal={() => setIsWaterModalOpen(true)}
+              onWaterUpdated={handleWaterUpdated}
             />
 
             {/* AI Health Tips */}
@@ -1354,6 +1442,15 @@ export default function App() {
         weightLogs={weightLogs}
         profile={profile}
         healthTip={healthTip}
+      />
+
+      {/* Water Intake Reminder & Log Modal */}
+      <WaterReminderModal
+        isOpen={isWaterModalOpen}
+        onClose={() => setIsWaterModalOpen(false)}
+        waterLogs={waterLogs}
+        waterConfig={waterConfig}
+        onWaterUpdated={handleWaterUpdated}
       />
     </div>
   );

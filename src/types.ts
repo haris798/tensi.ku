@@ -40,3 +40,18 @@ export interface AITipLog {
   focus: string;
   created_at: string;
 }
+
+export interface WaterLog {
+  id: string;
+  amount_ml: number;
+  logged_at: string; // ISO string
+}
+
+export interface WaterReminderConfig {
+  enabled: boolean;
+  daily_goal_ml: number; // e.g. 2000 ml
+  interval_minutes: number; // e.g. 60 or 120
+  start_time: string; // e.g. "07:00"
+  end_time: string; // e.g. "21:00"
+  sound_enabled: boolean;
+}

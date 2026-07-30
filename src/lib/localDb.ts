@@ -1,4 +1,4 @@
-import { BloodPressureLog, WeightLog, UserProfile, AITipLog } from '../types';
+import { BloodPressureLog, WeightLog, UserProfile, AITipLog, WaterLog, WaterReminderConfig } from '../types';
 
 // Pre-populate with realistic mock health records for an immersive first impression
 const DUMMY_BP_LOGS: BloodPressureLog[] = [
@@ -123,7 +123,18 @@ const KEYS = {
   WEIGHT: 'local_weight_logs_v1',
   PROFILE: 'local_profile_v1',
   HAS_SEEDED: 'local_has_seeded_v2',
-  AI_TIPS: 'local_ai_tips_v1'
+  AI_TIPS: 'local_ai_tips_v1',
+  WATER_LOGS: 'local_water_logs_v1',
+  WATER_CONFIG: 'local_water_config_v1',
+};
+
+const DEFAULT_WATER_CONFIG: WaterReminderConfig = {
+  enabled: true,
+  daily_goal_ml: 2000,
+  interval_minutes: 120,
+  start_time: '07:00',
+  end_time: '21:00',
+  sound_enabled: true,
 };
 
 // Call once at module init to ensure seed data is present
@@ -327,6 +338,54 @@ export const localDb = {
     if (logs.length > 30) logs.pop();
     localStorage.setItem(KEYS.AI_TIPS, JSON.stringify(logs));
     return newLog;
+  },
+
+  getWaterLogs(): WaterLog[] {
+    const data = localStorage.getItem(KEYS.WATER_LOGS);
+    return data ? JSON.parse(data) : [];
+  },
+
+  getTodayWaterLogs(): WaterLog[] {
+    const logs = this.getWaterLogs();
+    const todayStr = new Date().toDateString();
+    return logs.filter((log) => new Date(log.logged_at).toDateString() === todayStr);
+  },
+
+  getTodayWaterTotal(): number {
+    const todayLogs = this.getTodayWaterLogs();
+    return todayLogs.reduce((sum, item) => sum + (Number(item.amount_ml) || 0), 0);
+  },
+
+  saveWaterLog(amountMl: number, loggedAt?: string): WaterLog {
+    const logs = this.getWaterLogs();
+    const newLog: WaterLog = {
+      id: generateUUID(),
+      amount_ml: amountMl,
+      logged_at: loggedAt || new Date().toISOString(),
+    };
+    logs.push(newLog);
+    // Sort chronologically
+    logs.sort((a, b) => new Date(a.logged_at).getTime() - new Date(b.logged_at).getTime());
+    localStorage.setItem(KEYS.WATER_LOGS, JSON.stringify(logs));
+    return newLog;
+  },
+
+  deleteWaterLog(id: string): void {
+    const logs = this.getWaterLogs();
+    const filtered = logs.filter((log) => String(log.id) !== String(id));
+    localStorage.setItem(KEYS.WATER_LOGS, JSON.stringify(filtered));
+  },
+
+  getWaterConfig(): WaterReminderConfig {
+    const data = localStorage.getItem(KEYS.WATER_CONFIG);
+    return data ? { ...DEFAULT_WATER_CONFIG, ...JSON.parse(data) } : DEFAULT_WATER_CONFIG;
+  },
+
+  saveWaterConfig(updated: Partial<WaterReminderConfig>): WaterReminderConfig {
+    const current = this.getWaterConfig();
+    const merged = { ...current, ...updated };
+    localStorage.setItem(KEYS.WATER_CONFIG, JSON.stringify(merged));
+    return merged;
   },
 
   clearAllData(): void {
