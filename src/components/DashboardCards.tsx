@@ -8,13 +8,14 @@ import {
   getWeightProgress,
   getWeeklySummary,
 } from "../lib/helpers";
-import { Activity, Heart, Scale, Calendar, TrendingUp } from "lucide-react";
+import { Activity, Heart, Scale, Calendar, TrendingUp, Printer } from "lucide-react";
 
 interface DashboardCardsProps {
   bpLogs: BloodPressureLog[];
   weightLogs: WeightLog[];
   profile: UserProfile;
   onNavigateSettings: () => void;
+  onOpenReportModal?: () => void;
 }
 
 export default function DashboardCards({
@@ -22,6 +23,7 @@ export default function DashboardCards({
   weightLogs,
   profile,
   onNavigateSettings,
+  onOpenReportModal,
 }: DashboardCardsProps) {
   const latestBP = bpLogs.length > 0 ? bpLogs[bpLogs.length - 1] : undefined;
   const latestWeight =
@@ -177,6 +179,19 @@ export default function DashboardCards({
             </div>
           )}
         </div>
+
+        {onOpenReportModal && (
+          <div className="border-t border-slate-100 dark:border-slate-800/80 pt-3 mt-4">
+            <button
+              type="button"
+              onClick={onOpenReportModal}
+              className="w-full text-[11px] font-bold text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/40 hover:bg-indigo-100 dark:hover:bg-indigo-950/80 py-2 px-3 rounded-xl transition-all flex items-center justify-center gap-1.5 cursor-pointer"
+            >
+              <Printer className="h-3.5 w-3.5" />
+              <span>Cetak Laporan Dokter (PDF)</span>
+            </button>
+          </div>
+        )}
       </div>
     </section>
   );

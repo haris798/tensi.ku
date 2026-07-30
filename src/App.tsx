@@ -38,6 +38,7 @@ import {
   Copy,
   Sparkles,
   CloudDownload,
+  Printer,
 } from "lucide-react";
 
 // Components
@@ -49,6 +50,7 @@ import BloodPressureChart from "./components/BloodPressureChart";
 import MonthlyTrendPieChart from "./components/MonthlyTrendPieChart";
 import WeightChart from "./components/WeightChart";
 import SupabaseConfigModal from "./components/SupabaseConfigModal";
+import DoctorReportModal from "./components/DoctorReportModal";
 
 export default function App() {
   // ── State ────────────────────────────────────────────────
@@ -68,6 +70,7 @@ export default function App() {
 
   // UI Controls
   const [isConfigOpen, setIsConfigOpen] = useState(false);
+  const [isReportModalOpen, setIsReportModalOpen] = useState(false);
   const [activeMainTab, setActiveMainTab] = useState<
     "dashboard" | "statistik" | "input" | "riwayat" | "seting"
   >("dashboard");
@@ -796,8 +799,17 @@ export default function App() {
               ))}
             </div>
 
-            {/* Config & Dark Mode */}
+            {/* Config, Report & Dark Mode */}
             <div className="flex items-center gap-1.5">
+              <button
+                onClick={() => setIsReportModalOpen(true)}
+                title="Cetak Laporan Dokter (PDF)"
+                className="px-2.5 py-2 rounded-xl border border-indigo-200 dark:border-indigo-900/60 bg-indigo-50 dark:bg-indigo-950/30 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-100 dark:hover:bg-indigo-900/50 transition-all active:scale-95 shadow-xs flex items-center gap-1.5 text-xs font-bold cursor-pointer"
+              >
+                <Printer className="h-4 w-4 text-indigo-600 dark:text-indigo-400" />
+                <span className="hidden md:inline">Laporan Dokter</span>
+              </button>
+
               <button
                 onClick={() => setIsConfigOpen(true)}
                 title={getSupabase() ? "Supabase Terhubung (Klik untuk atur)" : "Atur Sambungan Supabase"}
@@ -840,6 +852,7 @@ export default function App() {
               weightLogs={weightLogs}
               profile={profile}
               onNavigateSettings={() => setActiveMainTab("seting")}
+              onOpenReportModal={() => setIsReportModalOpen(true)}
             />
 
             {/* AI Health Tips */}
@@ -1097,6 +1110,15 @@ export default function App() {
               <div className="flex items-center gap-2">
                 <button
                   type="button"
+                  onClick={() => setIsReportModalOpen(true)}
+                  title="Cetak Laporan Kesehatan Dokter (PDF)"
+                  className="p-2 bg-gradient-to-r from-indigo-600 to-emerald-600 hover:from-indigo-700 hover:to-emerald-700 text-white rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 active:scale-95 shrink-0 cursor-pointer shadow-xs"
+                >
+                  <Printer className="h-4 w-4" />
+                  <span className="hidden sm:inline">Cetak PDF Dokter</span>
+                </button>
+                <button
+                  type="button"
                   onClick={handleManualSync}
                   disabled={isManualSyncing || !getSupabase() || !navigator.onLine}
                   title="Download semua data dari Supabase dan ganti data lokal"
@@ -1322,6 +1344,16 @@ export default function App() {
         password={creds.password}
         onSave={handleSaveConfig}
         onReset={handleResetConfig}
+      />
+
+      {/* Doctor Report Printable PDF Modal */}
+      <DoctorReportModal
+        isOpen={isReportModalOpen}
+        onClose={() => setIsReportModalOpen(false)}
+        bpLogs={bpLogs}
+        weightLogs={weightLogs}
+        profile={profile}
+        healthTip={healthTip}
       />
     </div>
   );
