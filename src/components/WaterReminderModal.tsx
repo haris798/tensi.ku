@@ -74,8 +74,10 @@ export default function WaterReminderModal({
   const [config, setConfig] = useState<WaterReminderConfig>(waterConfig);
   const [customMlInput, setCustomMlInput] = useState('');
   const [notificationPermission, setNotificationPermission] = useState<NotificationPermission>(
-    typeof Notification !== 'undefined' ? Notification.permission : 'default'
+    typeof window !== 'undefined' && 'Notification' in window ? Notification.permission : 'default'
   );
+  const isNotificationSupported = typeof window !== 'undefined' && 'Notification' in window;
+
   const [toastMsg, setToastMsg] = useState<string | null>(null);
   const [showSettings, setShowSettings] = useState(false);
 
@@ -84,10 +86,10 @@ export default function WaterReminderModal({
   }, [waterConfig]);
 
   useEffect(() => {
-    if (typeof Notification !== 'undefined') {
+    if (isNotificationSupported) {
       setNotificationPermission(Notification.permission);
     }
-  }, [isOpen]);
+  }, [isOpen, isNotificationSupported]);
 
   if (!isOpen) return null;
 
@@ -137,7 +139,7 @@ export default function WaterReminderModal({
     const updated = localDb.saveWaterConfig({ enabled: nextEnabled });
     setConfig(updated);
     onWaterUpdated();
-    if (nextEnabled && notificationPermission !== 'granted') {
+    if (nextEnabled && isNotificationSupported && notificationPermission !== 'granted') {
       requestNotificationPermission();
     } else {
       showToast(
@@ -149,8 +151,8 @@ export default function WaterReminderModal({
   };
 
   const requestNotificationPermission = async () => {
-    if (typeof Notification === 'undefined') {
-      showToast('Browser Anda tidak mendukung notifikasi sistem.');
+    if (!isNotificationSupported) {
+      showToast('Browser Anda tidak mendukung notifikasi sistem. Pengingat akan muncul di dalam aplikasi.');
       return;
     }
     try {
@@ -178,14 +180,14 @@ export default function WaterReminderModal({
       playWaterChime();
     }
 
-    if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
+    if (isNotificationSupported && Notification.permission === 'granted') {
       new Notification('💧 Waktunya Minum Air Putih!', {
         body: `Ayo cegah dehidrasi! Target harianmu: ${todayTotalMl}/${config.daily_goal_ml} ml.`,
         icon: '/favicon.ico',
       });
       showToast('Notifikasi uji coba terkirim!');
     } else {
-      showToast('🔊 Suara chime dimainkan! Aktifkan izin notifikasi browser untuk pop-up.');
+      showToast('🔊 Suara chime dimainkan! Pengingat visual akan muncul di dalam aplikasi.');
     }
   };
 
@@ -417,7 +419,7 @@ export default function WaterReminderModal({
             </div>
 
             {/* Notification permission prompt warning */}
-            {config.enabled && notificationPermission !== 'granted' && (
+            {config.enabled && isNotificationSupported && notificationPermission === 'default' && (
               <div className="p-2.5 bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800/60 rounded-xl flex items-center justify-between gap-2 text-amber-800 dark:text-amber-300 text-[11px]">
                 <span>Izin notifikasi browser belum aktif.</span>
                 <button
@@ -427,6 +429,19 @@ export default function WaterReminderModal({
                 >
                   Izinkan Notifikasi
                 </button>
+              </div>
+            )}
+
+            {config.enabled && isNotificationSupported && notificationPermission === 'denied' && (
+              <div className="p-2.5 bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-800/60 rounded-xl flex items-center gap-2 text-rose-800 dark:text-rose-300 text-[11px]">
+                <span>Izin notifikasi diblokir. Aktifkan dari pengaturan situs browser Anda untuk mendapat notifikasi.</span>
+              </div>
+            )}
+            
+            {/* Warning when not supported */}
+            {config.enabled && !isNotificationSupported && (
+              <div className="p-2.5 bg-sky-50 dark:bg-sky-950/40 border border-sky-200 dark:border-sky-800/60 rounded-xl flex items-center justify-between gap-2 text-sky-800 dark:text-sky-300 text-[11px]">
+                <span>Notifikasi sistem tidak didukung. Pengingat hanya akan berupa suara/pop-up dalam aplikasi saat aplikasi dibuka.</span>
               </div>
             )}
 

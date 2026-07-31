@@ -42,6 +42,7 @@ import {
   CloudDownload,
   Printer,
   Droplet,
+  X,
 } from "lucide-react";
 
 // Components
@@ -83,6 +84,7 @@ export default function App() {
   const [isConfigOpen, setIsConfigOpen] = useState(false);
   const [isReportModalOpen, setIsReportModalOpen] = useState(false);
   const [isWaterModalOpen, setIsWaterModalOpen] = useState(false);
+  const [waterToastMsg, setWaterToastMsg] = useState<string | null>(null);
 
   const handleWaterUpdated = useCallback(() => {
     setWaterLogs(localDb.getWaterLogs());
@@ -127,7 +129,7 @@ export default function App() {
         }
 
         if (
-          typeof Notification !== "undefined" &&
+          typeof window !== 'undefined' && 'Notification' in window &&
           Notification.permission === "granted"
         ) {
           new Notification("💧 Waktunya Minum Air Putih!", {
@@ -135,6 +137,9 @@ export default function App() {
             icon: "/favicon.ico",
           });
         }
+        
+        setWaterToastMsg(`Waktunya Minum Air! Asupan hari ini: ${localDb.getTodayWaterTotal()}/${waterConfig.daily_goal_ml} ml.`);
+        setTimeout(() => setWaterToastMsg(null), 8000);
       }
     };
 
@@ -825,6 +830,17 @@ export default function App() {
     <div
       className="min-h-screen bg-[#F8FAFC] dark:bg-slate-950 text-slate-900 dark:text-slate-100 flex flex-col font-sans selection:bg-indigo-100 dark:selection:bg-indigo-950 selection:text-indigo-900 dark:selection:text-indigo-200 pb-16 transition-colors duration-200 animate-fade-in"
     >
+      {/* Water Toast Message */}
+      {waterToastMsg && (
+        <div className="fixed top-4 left-1/2 -translate-x-1/2 z-[100] px-5 py-3 bg-cyan-600 text-white text-sm font-bold rounded-2xl shadow-xl flex items-center gap-3 animate-in slide-in-from-top-4 duration-300">
+          <Droplet className="h-5 w-5 text-cyan-200 fill-current" />
+          <span>{waterToastMsg}</span>
+          <button onClick={() => setWaterToastMsg(null)} className="ml-2 text-white/80 hover:text-white bg-black/10 rounded-full p-1 transition-colors">
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+      )}
+
       {/* HEADER BAR */}
       <header className="sticky top-0 z-40 w-full border-b border-slate-200 dark:border-slate-700/80 bg-[#F8FAFC]/90 dark:bg-slate-950/90 backdrop-blur-md px-4 sm:px-6 py-4">
         <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4">
@@ -878,7 +894,7 @@ export default function App() {
                 className="px-2.5 py-2 rounded-xl border border-cyan-200 dark:border-cyan-900/60 bg-cyan-50 dark:bg-cyan-950/30 text-cyan-700 dark:text-cyan-300 hover:bg-cyan-100 dark:hover:bg-cyan-900/50 transition-all active:scale-95 shadow-xs flex items-center gap-1.5 text-xs font-bold cursor-pointer"
               >
                 <Droplet className="h-4 w-4 text-cyan-600 dark:text-cyan-400 fill-cyan-200 dark:fill-cyan-800" />
-                <span className="hidden sm:inline">Minum Air</span>
+                <span className="hidden sm:inline"></span>
               </button>
 
               <button
