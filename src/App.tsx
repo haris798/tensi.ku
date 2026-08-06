@@ -12,8 +12,6 @@ import {
   WeightLog,
   UserProfile,
   AITipLog,
-  WaterLog,
-  WaterReminderConfig,
 } from "./types";
 import { syncEngine } from "./lib/syncEngine";
 import { parseCSV } from "./lib/csvHelper";
@@ -41,8 +39,6 @@ import {
   Sparkles,
   CloudDownload,
   Printer,
-  Droplet,
-  X,
 } from "lucide-react";
 
 // Components
@@ -55,8 +51,6 @@ import MonthlyTrendPieChart from "./components/MonthlyTrendPieChart";
 import WeightChart from "./components/WeightChart";
 import SupabaseConfigModal from "./components/SupabaseConfigModal";
 import DoctorReportModal from "./components/DoctorReportModal";
-import WaterReminderModal, { playWaterChime } from "./components/WaterReminderModal";
-import WaterTrackerCard from "./components/WaterTrackerCard";
 
 export default function App() {
   // ── State ────────────────────────────────────────────────
@@ -73,80 +67,9 @@ export default function App() {
   const [weightLogs, setWeightLogs] = useState<WeightLog[]>(() =>
     localDb.getWeightLogs()
   );
-  const [waterLogs, setWaterLogs] = useState<WaterLog[]>(() =>
-    localDb.getWaterLogs()
-  );
-  const [waterConfig, setWaterConfig] = useState<WaterReminderConfig>(() =>
-    localDb.getWaterConfig()
-  );
-
   // UI Controls
   const [isConfigOpen, setIsConfigOpen] = useState(false);
   const [isReportModalOpen, setIsReportModalOpen] = useState(false);
-  const [isWaterModalOpen, setIsWaterModalOpen] = useState(false);
-  const [waterToastMsg, setWaterToastMsg] = useState<string | null>(null);
-
-  const handleWaterUpdated = useCallback(() => {
-    setWaterLogs(localDb.getWaterLogs());
-    setWaterConfig(localDb.getWaterConfig());
-  }, []);
-
-  // Background timer for water drink notifications
-  useEffect(() => {
-    if (!waterConfig.enabled) return;
-
-    const checkReminder = () => {
-      const now = new Date();
-      const currentMins = now.getHours() * 60 + now.getMinutes();
-
-      const [startH, startM] = (waterConfig.start_time || "07:00").split(":").map(Number);
-      const [endH, endM] = (waterConfig.end_time || "21:00").split(":").map(Number);
-      const startMins = startH * 60 + startM;
-      const endMins = endH * 60 + endM;
-
-      if (currentMins < startMins || currentMins > endMins) return;
-
-      const todayStr = new Date().toDateString();
-      const todayLogs = waterLogs.filter(
-        (log) => new Date(log.logged_at).toDateString() === todayStr
-      );
-      const lastIntake =
-        todayLogs.length > 0
-          ? new Date(todayLogs[todayLogs.length - 1].logged_at).getTime()
-          : 0;
-      const lastNotified = parseInt(
-        localStorage.getItem("water_last_notified_at") || "0",
-        10
-      );
-      const lastTime = Math.max(lastIntake, lastNotified);
-
-      const intervalMs = (waterConfig.interval_minutes || 120) * 60 * 1000;
-      if (lastTime === 0 || now.getTime() - lastTime >= intervalMs) {
-        localStorage.setItem("water_last_notified_at", String(now.getTime()));
-
-        if (waterConfig.sound_enabled) {
-          playWaterChime();
-        }
-
-        if (
-          typeof window !== 'undefined' && 'Notification' in window &&
-          Notification.permission === "granted"
-        ) {
-          new Notification("💧 Waktunya Minum Air Putih!", {
-            body: `Cegah dehidrasi! Asupan hari ini: ${localDb.getTodayWaterTotal()}/${waterConfig.daily_goal_ml} ml. Yuk minum segelas air sekarang!`,
-            icon: "/favicon.ico",
-          });
-        }
-        
-        setWaterToastMsg(`Waktunya Minum Air! Asupan hari ini: ${localDb.getTodayWaterTotal()}/${waterConfig.daily_goal_ml} ml.`);
-        setTimeout(() => setWaterToastMsg(null), 8000);
-      }
-    };
-
-    checkReminder();
-    const intervalId = setInterval(checkReminder, 60000); // Check every 60s
-    return () => clearInterval(intervalId);
-  }, [waterConfig, waterLogs]);
   const [activeMainTab, setActiveMainTab] = useState<
     "dashboard" | "statistik" | "input" | "riwayat" | "seting"
   >("dashboard");
@@ -354,6 +277,22 @@ export default function App() {
     }
   }, [bpLogs, weightLogs, aiTipsHistory, isGeneratingTip, handleGenerateHealthTip, latestBP, latestWeight]);
 
+  // ── IndexedDB Initialization ───────────────────────────
+  useEffect(() => {
+    localDb.initIndexedDB().then(() => {
+      setBpLogs(localDb.getBPLogs());
+      setWeightLogs(localDb.getWeightLogs());
+      const p = localDb.getProfile();
+      setProfile(p);
+      setAiTipsHistory(localDb.getAITips());
+      if (p && p.full_name) {
+        setProfileNameInput(p.full_name);
+        setTargetWeightInput(p.target_weight ? String(p.target_weight) : "");
+        setHeightInput(p.height ? String(p.height) : "");
+      }
+    });
+  }, []);
+
   // ── Dark Mode ───────────────────────────────────────────
   useEffect(() => {
     localStorage.setItem("bp_dark_mode", isDark ? "true" : "false");
@@ -459,8 +398,18 @@ export default function App() {
 
     const handleOnline = () => handleBackgroundSync();
 
+    // Silent background auto-sync interval (every 30s)
+    const intervalId = setInterval(() => {
+      if (navigator.onLine) {
+        handleBackgroundSync();
+      }
+    }, 30000);
+
     window.addEventListener("online", handleOnline);
-    return () => window.removeEventListener("online", handleOnline);
+    return () => {
+      window.removeEventListener("online", handleOnline);
+      clearInterval(intervalId);
+    };
   }, [handleBackgroundSync]);
 
   // ── Profile Update ──────────────────────────────────────
@@ -826,113 +775,121 @@ export default function App() {
   );
 
   // ── Render ───────────────────────────────────────────────
+  const mainTabs = [
+    { key: "dashboard", label: "Dashboard", icon: LayoutDashboard },
+    { key: "statistik", label: "Statistik", icon: TrendingUp },
+    { key: "input", label: "Input Data", icon: Plus },
+    { key: "riwayat", label: "Riwayat", icon: History },
+    { key: "seting", label: "Pengaturan", icon: Settings },
+  ] as const;
+
   return (
     <div
-      className="min-h-screen bg-[#F8FAFC] dark:bg-slate-950 text-slate-900 dark:text-slate-100 flex flex-col font-sans selection:bg-indigo-100 dark:selection:bg-indigo-950 selection:text-indigo-900 dark:selection:text-indigo-200 pb-16 transition-colors duration-200 animate-fade-in"
+      className="min-h-screen bg-[#F8FAFC] dark:bg-slate-950 text-slate-900 dark:text-slate-100 flex flex-col font-sans selection:bg-indigo-100 dark:selection:bg-indigo-950 selection:text-indigo-900 dark:selection:text-indigo-200 pb-20 sm:pb-16 transition-colors duration-200 animate-fade-in"
     >
-      {/* Water Toast Message */}
-      {waterToastMsg && (
-        <div className="fixed top-4 left-1/2 -translate-x-1/2 z-[100] px-5 py-3 bg-cyan-600 text-white text-sm font-bold rounded-2xl shadow-xl flex items-center gap-3 animate-in slide-in-from-top-4 duration-300">
-          <Droplet className="h-5 w-5 text-cyan-200 fill-current" />
-          <span>{waterToastMsg}</span>
-          <button onClick={() => setWaterToastMsg(null)} className="ml-2 text-white/80 hover:text-white bg-black/10 rounded-full p-1 transition-colors">
-            <X className="h-4 w-4" />
-          </button>
-        </div>
-      )}
-
       {/* HEADER BAR */}
-      <header className="sticky top-0 z-40 w-full border-b border-slate-200 dark:border-slate-700/80 bg-[#F8FAFC]/90 dark:bg-slate-950/90 backdrop-blur-md px-4 sm:px-6 py-4">
-        <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4">
-          {/* Logo */}
-          <div className="flex items-center gap-3">
-            <div className="h-10 w-10 rounded-xl bg-indigo-600 flex items-center justify-center text-white shadow-lg shadow-indigo-100 dark:shadow-none shrink-0">
-              <Activity className="h-5 w-5 text-white" />
+      <header className="sticky top-0 z-40 w-full border-b border-slate-200 dark:border-slate-700/80 bg-[#F8FAFC]/90 dark:bg-slate-950/90 backdrop-blur-md px-4 sm:px-6 py-3.5">
+        <div className="max-w-7xl mx-auto flex flex-col md:flex-row items-center justify-between gap-3 md:gap-4">
+          {/* Logo + Header Nav */}
+          <div className="flex items-center justify-between w-full md:w-auto gap-4">
+            <div className="flex items-center gap-3">
+              <div className="h-10 w-10 rounded-xl bg-indigo-600 flex items-center justify-center text-white shadow-lg shadow-indigo-100 dark:shadow-none shrink-0">
+                <Activity className="h-5 w-5 text-white" />
+              </div>
+              <div>
+                <h1 className="text-xl font-bold text-slate-800 dark:text-slate-100 tracking-tight">
+                  tensi.ku
+                </h1>
+                <p className="text-xs text-slate-500 dark:text-slate-400 font-medium">
+                  Asisten monitoring
+                </p>
+              </div>
             </div>
-            <div>
-              <h1 className="text-xl font-bold text-slate-800 dark:text-slate-100 tracking-tight">
-                tensi.ku
-              </h1>
-              <p className="text-xs text-slate-500 dark:text-slate-400 font-medium">
-                Asisten monitoring
-              </p>
-            </div>
-          </div>
 
-          {/* Right section */}
-          <div className="flex flex-wrap items-center justify-center sm:justify-end gap-3 w-full sm:w-auto">
-            {/* Tab Switcher */}
-            <div className="flex items-center gap-1 p-1 rounded-xl border border-slate-200 dark:border-slate-800 bg-white/50 dark:bg-slate-900/50 backdrop-blur-sm">
-              {([
-                { key: "dashboard", icon: LayoutDashboard, title: "Dashboard" },
-                { key: "statistik", icon: TrendingUp, title: "Statistik" },
-                { key: "input", icon: Plus, title: "Input Data Baru" },
-                { key: "riwayat", icon: History, title: "Riwayat Pengukuran" },
-                { key: "seting", icon: Settings, title: "Pengaturan & Profil" },
-              ] as const).map(({ key, icon: Icon, title }) => (
+            {/* Desktop Navigation Tabs */}
+            <nav className="hidden sm:flex items-center gap-1.5 p-1 rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-2xs">
+              {mainTabs.map(({ key, label, icon: Icon }) => (
                 <button
                   key={key}
                   type="button"
                   onClick={() => setActiveMainTab(key)}
-                  title={title}
-                  className={`p-2 rounded-lg transition-all cursor-pointer ${
+                  className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 cursor-pointer active:scale-95 ${
                     activeMainTab === key
-                      ? "bg-indigo-600 text-white shadow-md"
-                      : "text-slate-500 dark:text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-slate-100 dark:hover:bg-slate-800"
+                      ? "bg-indigo-600 text-white shadow-md shadow-indigo-200 dark:shadow-none"
+                      : "text-slate-600 dark:text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-slate-100 dark:hover:bg-slate-800/80"
                   }`}
                 >
                   <Icon className="h-4 w-4" />
+                  <span>{label}</span>
                 </button>
               ))}
-            </div>
+            </nav>
+          </div>
 
-            {/* Config, Water, Report & Dark Mode */}
-            <div className="flex items-center gap-1.5">
-              <button
-                onClick={() => setIsWaterModalOpen(true)}
-                title="Pengingat & Catatan Minum Air Putih"
-                className="px-2.5 py-2 rounded-xl border border-cyan-200 dark:border-cyan-900/60 bg-cyan-50 dark:bg-cyan-950/30 text-cyan-700 dark:text-cyan-300 hover:bg-cyan-100 dark:hover:bg-cyan-900/50 transition-all active:scale-95 shadow-xs flex items-center gap-1.5 text-xs font-bold cursor-pointer"
-              >
-                <Droplet className="h-4 w-4 text-cyan-600 dark:text-cyan-400 fill-cyan-200 dark:fill-cyan-800" />
-                <span className="hidden sm:inline"></span>
-              </button>
+          {/* Right section: Actions */}
+          <div className="flex items-center justify-end gap-2 w-full md:w-auto">
+            <button
+              onClick={() => setIsReportModalOpen(true)}
+              title="Cetak Laporan Dokter (PDF)"
+              className="px-3 py-2 rounded-xl border border-indigo-200 dark:border-indigo-900/60 bg-indigo-50 dark:bg-indigo-950/30 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-100 dark:hover:bg-indigo-900/50 transition-all active:scale-95 shadow-xs flex items-center gap-1.5 text-xs font-bold cursor-pointer"
+            >
+              <Printer className="h-4 w-4 text-indigo-600 dark:text-indigo-400" />
+              <span>Laporan Dokter</span>
+            </button>
 
-              <button
-                onClick={() => setIsReportModalOpen(true)}
-                title="Cetak Laporan Dokter (PDF)"
-                className="px-2.5 py-2 rounded-xl border border-indigo-200 dark:border-indigo-900/60 bg-indigo-50 dark:bg-indigo-950/30 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-100 dark:hover:bg-indigo-900/50 transition-all active:scale-95 shadow-xs flex items-center gap-1.5 text-xs font-bold cursor-pointer"
-              >
-                <Printer className="h-4 w-4 text-indigo-600 dark:text-indigo-400" />
-                <span className="hidden md:inline">Laporan Dokter</span>
-              </button>
+            <button
+              onClick={() => setIsConfigOpen(true)}
+              title={getSupabase() ? "Supabase Terhubung (Klik untuk atur)" : "Atur Sambungan Supabase"}
+              className={`p-2 rounded-xl border transition-all active:scale-95 shadow-xs flex items-center justify-center cursor-pointer ${
+                getSupabase()
+                  ? "bg-emerald-50 dark:bg-emerald-950/30 text-emerald-600 dark:text-emerald-400 border-emerald-200 dark:border-emerald-800/60"
+                  : "border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-slate-500 dark:text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400"
+              }`}
+            >
+              <Database className={`h-4 w-4 ${getSupabase() ? "text-emerald-600 dark:text-emerald-400" : ""}`} />
+            </button>
 
-              <button
-                onClick={() => setIsConfigOpen(true)}
-                title={getSupabase() ? "Supabase Terhubung (Klik untuk atur)" : "Atur Sambungan Supabase"}
-                className={`p-2 rounded-xl border transition-all active:scale-95 shadow-xs flex items-center justify-center cursor-pointer ${
-                  getSupabase()
-                    ? "bg-emerald-50 dark:bg-emerald-950/30 text-emerald-600 dark:text-emerald-400 border-emerald-200 dark:border-emerald-800/60"
-                    : "border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-slate-500 dark:text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400"
-                }`}
-              >
-                <Database className={`h-4 w-4 ${getSupabase() ? "text-emerald-600 dark:text-emerald-400" : ""}`} />
-              </button>
-
-              <button
-                onClick={() => setIsDark(!isDark)}
-                title={isDark ? "Ganti ke Mode Terang" : "Ganti ke Mode Gelap"}
-                className="p-2 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-500 dark:text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 transition-all active:scale-95 shadow-xs flex items-center justify-center cursor-pointer"
-              >
-                {isDark ? <Sun className="h-4 w-4 text-amber-500" /> : <Moon className="h-4 w-4" />}
-              </button>
-            </div>
+            <button
+              onClick={() => setIsDark(!isDark)}
+              title={isDark ? "Ganti ke Mode Terang" : "Ganti ke Mode Gelap"}
+              className="p-2 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-500 dark:text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 transition-all active:scale-95 shadow-xs flex items-center justify-center cursor-pointer"
+            >
+              {isDark ? <Sun className="h-4 w-4 text-amber-500" /> : <Moon className="h-4 w-4" />}
+            </button>
           </div>
         </div>
       </header>
 
+      {/* MOBILE BOTTOM NAVIGATION BAR */}
+      <nav className="sm:hidden fixed bottom-0 left-0 right-0 z-50 bg-white/95 dark:bg-slate-950/95 backdrop-blur-lg border-t border-slate-200 dark:border-slate-800 px-2 py-1.5 flex items-center justify-around shadow-lg">
+        {mainTabs.map(({ key, label, icon: Icon }) => (
+          <button
+            key={key}
+            type="button"
+            onClick={() => setActiveMainTab(key)}
+            className={`flex flex-col items-center justify-center py-1 px-2 rounded-xl transition-all active:scale-95 cursor-pointer ${
+              activeMainTab === key
+                ? "text-indigo-600 dark:text-indigo-400 font-bold"
+                : "text-slate-400 dark:text-slate-500 hover:text-slate-700 dark:hover:text-slate-300"
+            }`}
+          >
+            <div
+              className={`p-1.5 rounded-xl transition-all ${
+                activeMainTab === key
+                  ? "bg-indigo-100 dark:bg-indigo-950/60"
+                  : ""
+              }`}
+            >
+              <Icon className="h-4 w-4" />
+            </div>
+            <span className="text-[10px] mt-0.5 leading-none">{label}</span>
+          </button>
+        ))}
+      </nav>
+
       {/* NOTIFICATIONS */}
       {actionSuccess && (
-        <div className="fixed bottom-6 right-6 z-50 p-4 rounded-xl bg-slate-900 text-white text-xs font-semibold shadow-xl border border-slate-800 flex items-center gap-2.5 animate-bounce">
+        <div className="fixed bottom-20 sm:bottom-6 right-6 z-50 p-4 rounded-xl bg-slate-900 text-white text-xs font-semibold shadow-xl border border-slate-800 flex items-center gap-2.5 animate-bounce">
           <CheckCircle className="h-4.5 w-4.5 text-emerald-400" />
           <span>{actionSuccess}</span>
         </div>
@@ -949,14 +906,6 @@ export default function App() {
               profile={profile}
               onNavigateSettings={() => setActiveMainTab("seting")}
               onOpenReportModal={() => setIsReportModalOpen(true)}
-            />
-
-            {/* Water Tracker & Reminder Card */}
-            <WaterTrackerCard
-              waterLogs={waterLogs}
-              waterConfig={waterConfig}
-              onOpenModal={() => setIsWaterModalOpen(true)}
-              onWaterUpdated={handleWaterUpdated}
             />
 
             {/* AI Health Tips */}
@@ -1458,15 +1407,6 @@ export default function App() {
         weightLogs={weightLogs}
         profile={profile}
         healthTip={healthTip}
-      />
-
-      {/* Water Intake Reminder & Log Modal */}
-      <WaterReminderModal
-        isOpen={isWaterModalOpen}
-        onClose={() => setIsWaterModalOpen(false)}
-        waterLogs={waterLogs}
-        waterConfig={waterConfig}
-        onWaterUpdated={handleWaterUpdated}
       />
     </div>
   );

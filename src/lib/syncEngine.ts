@@ -1,6 +1,7 @@
 import { getSupabase } from './supabase';
 import { BloodPressureLog, WeightLog, UserProfile } from '../types';
 import { deduplicateBPLogs, deduplicateWeightLogs } from './localDb';
+import { idbSetKV, idbBulkSaveBPLogs, idbBulkSaveWeightLogs, idbSaveProfile } from './indexedDb';
 
 export interface SyncAction {
   id: string;
@@ -36,8 +37,10 @@ export const syncEngine = {
   setLastUserId(userId: string | null): void {
     if (userId) {
       localStorage.setItem(KEYS.LAST_USER, userId);
+      idbSetKV(KEYS.LAST_USER, userId);
     } else {
       localStorage.removeItem(KEYS.LAST_USER);
+      idbSetKV(KEYS.LAST_USER, null);
     }
   },
 
@@ -63,18 +66,25 @@ export const syncEngine = {
   setCachedBP(userId: string, logs: BloodPressureLog[]): void {
     const deduplicated = deduplicateBPLogs(logs);
     localStorage.setItem(KEYS.BP(userId), JSON.stringify(deduplicated));
+    idbSetKV(KEYS.BP(userId), deduplicated);
+    idbBulkSaveBPLogs(deduplicated);
   },
 
   setCachedWeight(userId: string, logs: WeightLog[]): void {
     const deduplicated = deduplicateWeightLogs(logs);
     localStorage.setItem(KEYS.WEIGHT(userId), JSON.stringify(deduplicated));
+    idbSetKV(KEYS.WEIGHT(userId), deduplicated);
+    idbBulkSaveWeightLogs(deduplicated);
   },
 
   setCachedProfile(userId: string, profile: UserProfile | null): void {
     if (profile) {
       localStorage.setItem(KEYS.PROFILE(userId), JSON.stringify(profile));
+      idbSetKV(KEYS.PROFILE(userId), profile);
+      idbSaveProfile(profile);
     } else {
       localStorage.removeItem(KEYS.PROFILE(userId));
+      idbSetKV(KEYS.PROFILE(userId), null);
     }
   },
 
@@ -86,6 +96,7 @@ export const syncEngine = {
 
   setQueue(userId: string, queue: SyncAction[]): void {
     localStorage.setItem(KEYS.QUEUE(userId), JSON.stringify(queue));
+    idbSetKV(KEYS.QUEUE(userId), queue);
   },
 
   addToQueue(userId: string, type: SyncAction['type'], payload: any): void {

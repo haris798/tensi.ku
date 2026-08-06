@@ -1,4 +1,22 @@
-import { BloodPressureLog, WeightLog, UserProfile, AITipLog, WaterLog, WaterReminderConfig } from '../types';
+import { BloodPressureLog, WeightLog, UserProfile, AITipLog } from '../types';
+import {
+  idbGetBPLogs,
+  idbSaveBPLog,
+  idbDeleteBPLog,
+  idbBulkSaveBPLogs,
+  idbGetWeightLogs,
+  idbSaveWeightLog,
+  idbDeleteWeightLog,
+  idbBulkSaveWeightLogs,
+  idbGetProfile,
+  idbSaveProfile,
+  idbGetAITips,
+  idbSaveAITip,
+  idbClearData,
+  idbResetAll,
+  idbGetKV,
+  idbSetKV,
+} from './indexedDb';
 
 // Pre-populate with realistic mock health records for an immersive first impression
 const DUMMY_BP_LOGS: BloodPressureLog[] = [
@@ -117,28 +135,25 @@ const DUMMY_PROFILE: UserProfile = {
   updated_at: new Date().toISOString()
 };
 
-// Keys
+// Keys for fallback localStorage
 const KEYS = {
   BP: 'local_bp_logs_v1',
   WEIGHT: 'local_weight_logs_v1',
   PROFILE: 'local_profile_v1',
   HAS_SEEDED: 'local_has_seeded_v2',
   AI_TIPS: 'local_ai_tips_v1',
-  WATER_LOGS: 'local_water_logs_v1',
-  WATER_CONFIG: 'local_water_config_v1',
 };
 
-const DEFAULT_WATER_CONFIG: WaterReminderConfig = {
-  enabled: true,
-  daily_goal_ml: 2000,
-  interval_minutes: 120,
-  start_time: '07:00',
-  end_time: '21:00',
-  sound_enabled: true,
-};
+// In-memory cache for ultra-fast synchronous UI responses
+let bpCache: BloodPressureLog[] = [];
+let weightCache: WeightLog[] = [];
+let profileCache: UserProfile = { ...DUMMY_PROFILE };
+let aiTipsCache: AITipLog[] = [];
+let isInitialized = false;
 
-// Call once at module init to ensure seed data is present
+// Call once at module init to ensure baseline seed data is present in localStorage
 function ensureSeeded() {
+  if (typeof window === 'undefined') return;
   const seeded = localStorage.getItem(KEYS.HAS_SEEDED);
   if (!seeded) {
     localStorage.setItem(KEYS.BP, JSON.stringify(DUMMY_BP_LOGS));
@@ -146,7 +161,25 @@ function ensureSeeded() {
     localStorage.setItem(KEYS.PROFILE, JSON.stringify(DUMMY_PROFILE));
     localStorage.setItem(KEYS.HAS_SEEDED, 'true');
   }
+
+  // Load synchronous cache from localStorage as instant fallback
+  try {
+    const rawBp = localStorage.getItem(KEYS.BP);
+    bpCache = rawBp ? deduplicateBPLogs(JSON.parse(rawBp)) : DUMMY_BP_LOGS;
+
+    const rawW = localStorage.getItem(KEYS.WEIGHT);
+    weightCache = rawW ? deduplicateWeightLogs(JSON.parse(rawW)) : DUMMY_WEIGHT_LOGS;
+
+    const rawProf = localStorage.getItem(KEYS.PROFILE);
+    profileCache = rawProf ? JSON.parse(rawProf) : DUMMY_PROFILE;
+
+    const rawTips = localStorage.getItem(KEYS.AI_TIPS);
+    aiTipsCache = rawTips ? JSON.parse(rawTips) : [];
+  } catch (err) {
+    console.error('Error loading localStorage fallback:', err);
+  }
 }
+
 ensureSeeded();
 
 export function generateUUID(): string {
@@ -160,20 +193,22 @@ export function generateUUID(): string {
 // Deduplication helper for Blood Pressure logs
 export function deduplicateBPLogs(logs: BloodPressureLog[]): BloodPressureLog[] {
   const seenIds = new Set<string>();
-  const seenKeys = new Set<string>();
+  const seenContentKeys = new Set<string>();
   const result: BloodPressureLog[] = [];
 
   for (const log of logs) {
     if (!log || !log.id) continue;
     const logId = String(log.id);
-    const timeKey = log.logged_at ? new Date(log.logged_at).toISOString() : '';
-    const contentKey = `${timeKey}_${log.systolic}_${log.diastolic}_${log.pulse}`;
+    const timeMs = log.logged_at ? new Date(log.logged_at).getTime() : NaN;
+    // Round to nearest second (1000ms) to ensure robust cross-platform matching
+    const timeSec = !isNaN(timeMs) ? Math.floor(timeMs / 1000) : '';
+    const contentKey = `${timeSec}_${Number(log.systolic)}_${Number(log.diastolic)}_${Number(log.pulse)}`;
 
-    if (seenIds.has(logId) || (timeKey && seenKeys.has(contentKey))) {
+    if (seenIds.has(logId) || (timeSec !== '' && seenContentKeys.has(contentKey))) {
       continue;
     }
     seenIds.add(logId);
-    if (timeKey) seenKeys.add(contentKey);
+    if (timeSec !== '') seenContentKeys.add(contentKey);
     result.push(log);
   }
 
@@ -183,20 +218,21 @@ export function deduplicateBPLogs(logs: BloodPressureLog[]): BloodPressureLog[] 
 // Deduplication helper for Weight logs
 export function deduplicateWeightLogs(logs: WeightLog[]): WeightLog[] {
   const seenIds = new Set<string>();
-  const seenKeys = new Set<string>();
+  const seenContentKeys = new Set<string>();
   const result: WeightLog[] = [];
 
   for (const log of logs) {
     if (!log || !log.id) continue;
     const logId = String(log.id);
-    const timeKey = log.logged_at ? new Date(log.logged_at).toISOString() : '';
-    const contentKey = `${timeKey}_${log.weight}`;
+    const timeMs = log.logged_at ? new Date(log.logged_at).getTime() : NaN;
+    const timeSec = !isNaN(timeMs) ? Math.floor(timeMs / 1000) : '';
+    const contentKey = `${timeSec}_${Number(log.weight)}`;
 
-    if (seenIds.has(logId) || (timeKey && seenKeys.has(contentKey))) {
+    if (seenIds.has(logId) || (timeSec !== '' && seenContentKeys.has(contentKey))) {
       continue;
     }
     seenIds.add(logId);
-    if (timeKey) seenKeys.add(contentKey);
+    if (timeSec !== '') seenContentKeys.add(contentKey);
     result.push(log);
   }
 
@@ -204,18 +240,57 @@ export function deduplicateWeightLogs(logs: WeightLog[]): WeightLog[] {
 }
 
 export const localDb = {
-  getBPLogs(): BloodPressureLog[] {
-    const data = localStorage.getItem(KEYS.BP);
-    const raw: BloodPressureLog[] = data ? JSON.parse(data) : [];
-    const deduplicated = deduplicateBPLogs(raw);
-    if (raw.length !== deduplicated.length) {
-      localStorage.setItem(KEYS.BP, JSON.stringify(deduplicated));
+  // Initialize IndexedDB and sync memory cache
+  async initIndexedDB(): Promise<void> {
+    if (isInitialized || typeof window === 'undefined') return;
+
+    try {
+      const seeded = await idbGetKV<boolean>('has_seeded');
+      let idbBp = await idbGetBPLogs();
+      let idbW = await idbGetWeightLogs();
+      let idbProf = await idbGetProfile('local-user');
+      let idbTips = await idbGetAITips();
+
+      if (!seeded || (idbBp.length === 0 && idbW.length === 0)) {
+        // Hydrate from memory/localStorage or dummy data into IndexedDB
+        const sourceBp = bpCache.length > 0 ? bpCache : DUMMY_BP_LOGS;
+        const sourceW = weightCache.length > 0 ? weightCache : DUMMY_WEIGHT_LOGS;
+        const sourceProf = profileCache || DUMMY_PROFILE;
+
+        await idbBulkSaveBPLogs(sourceBp);
+        await idbBulkSaveWeightLogs(sourceW);
+        await idbSaveProfile(sourceProf);
+        await idbSetKV('has_seeded', true);
+
+        idbBp = sourceBp;
+        idbW = sourceW;
+        idbProf = sourceProf;
+      }
+
+      // Populate memory cache from IndexedDB
+      bpCache = deduplicateBPLogs(idbBp);
+      weightCache = deduplicateWeightLogs(idbW);
+      if (idbProf) profileCache = idbProf;
+      if (idbTips.length > 0) aiTipsCache = idbTips;
+
+      // Synchronize back to localStorage for fallback
+      localStorage.setItem(KEYS.BP, JSON.stringify(bpCache));
+      localStorage.setItem(KEYS.WEIGHT, JSON.stringify(weightCache));
+      localStorage.setItem(KEYS.PROFILE, JSON.stringify(profileCache));
+      localStorage.setItem(KEYS.AI_TIPS, JSON.stringify(aiTipsCache));
+
+      isInitialized = true;
+    } catch (err) {
+      console.error('Failed to initialize IndexedDB:', err);
     }
-    return deduplicated;
+  },
+
+  getBPLogs(): BloodPressureLog[] {
+    bpCache = deduplicateBPLogs(bpCache);
+    return [...bpCache];
   },
 
   saveBPLog(systolic: number, diastolic: number, pulse: number, loggedAt: string, notes: string, existingId?: string): BloodPressureLog {
-    let logs = this.getBPLogs();
     const targetId = existingId || generateUUID();
     const newLog: BloodPressureLog = {
       id: targetId,
@@ -228,11 +303,10 @@ export const localDb = {
       created_at: new Date().toISOString()
     };
 
-    let existingIndex = logs.findIndex(l => String(l.id) === String(targetId));
+    let existingIndex = bpCache.findIndex(l => String(l.id) === String(targetId));
     if (existingIndex < 0) {
-      // Check if duplicate exists by timestamp and values
       const targetTime = new Date(loggedAt).getTime();
-      existingIndex = logs.findIndex(l => {
+      existingIndex = bpCache.findIndex(l => {
         const t = new Date(l.logged_at).getTime();
         return Math.abs(t - targetTime) < 1000 &&
           Number(l.systolic) === systolic &&
@@ -242,34 +316,33 @@ export const localDb = {
     }
 
     if (existingIndex >= 0) {
-      logs[existingIndex] = { ...logs[existingIndex], ...newLog, id: targetId };
+      bpCache[existingIndex] = { ...bpCache[existingIndex], ...newLog, id: targetId };
     } else {
-      logs.push(newLog);
+      bpCache.push(newLog);
     }
 
-    logs = deduplicateBPLogs(logs);
-    localStorage.setItem(KEYS.BP, JSON.stringify(logs));
-    return logs.find(l => String(l.id) === String(targetId)) || newLog;
+    bpCache = deduplicateBPLogs(bpCache);
+    const finalLog = bpCache.find(l => String(l.id) === String(targetId)) || newLog;
+
+    // Persist to IndexedDB & localStorage
+    idbSaveBPLog(finalLog);
+    localStorage.setItem(KEYS.BP, JSON.stringify(bpCache));
+
+    return finalLog;
   },
 
   deleteBPLog(id: string): void {
-    const logs = this.getBPLogs();
-    const filtered = logs.filter(log => String(log.id) !== String(id));
-    localStorage.setItem(KEYS.BP, JSON.stringify(filtered));
+    bpCache = bpCache.filter(log => String(log.id) !== String(id));
+    idbDeleteBPLog(id);
+    localStorage.setItem(KEYS.BP, JSON.stringify(bpCache));
   },
 
   getWeightLogs(): WeightLog[] {
-    const data = localStorage.getItem(KEYS.WEIGHT);
-    const raw: WeightLog[] = data ? JSON.parse(data) : [];
-    const deduplicated = deduplicateWeightLogs(raw);
-    if (raw.length !== deduplicated.length) {
-      localStorage.setItem(KEYS.WEIGHT, JSON.stringify(deduplicated));
-    }
-    return deduplicated;
+    weightCache = deduplicateWeightLogs(weightCache);
+    return [...weightCache];
   },
 
   saveWeightLog(weight: number, loggedAt: string, notes: string, existingId?: string): WeightLog {
-    let logs = this.getWeightLogs();
     const targetId = existingId || generateUUID();
     const newLog: WeightLog = {
       id: targetId,
@@ -280,120 +353,88 @@ export const localDb = {
       created_at: new Date().toISOString()
     };
 
-    let existingIndex = logs.findIndex(l => String(l.id) === String(targetId));
+    let existingIndex = weightCache.findIndex(l => String(l.id) === String(targetId));
     if (existingIndex < 0) {
       const targetTime = new Date(loggedAt).getTime();
-      existingIndex = logs.findIndex(l => {
+      existingIndex = weightCache.findIndex(l => {
         const t = new Date(l.logged_at).getTime();
         return Math.abs(t - targetTime) < 1000 && Number(l.weight) === weight;
       });
     }
 
     if (existingIndex >= 0) {
-      logs[existingIndex] = { ...logs[existingIndex], ...newLog, id: targetId };
+      weightCache[existingIndex] = { ...weightCache[existingIndex], ...newLog, id: targetId };
     } else {
-      logs.push(newLog);
+      weightCache.push(newLog);
     }
 
-    logs = deduplicateWeightLogs(logs);
-    localStorage.setItem(KEYS.WEIGHT, JSON.stringify(logs));
-    return logs.find(l => String(l.id) === String(targetId)) || newLog;
+    weightCache = deduplicateWeightLogs(weightCache);
+    const finalLog = weightCache.find(l => String(l.id) === String(targetId)) || newLog;
+
+    // Persist to IndexedDB & localStorage
+    idbSaveWeightLog(finalLog);
+    localStorage.setItem(KEYS.WEIGHT, JSON.stringify(weightCache));
+
+    return finalLog;
   },
 
   deleteWeightLog(id: string): void {
-    const logs = this.getWeightLogs();
-    const filtered = logs.filter(log => String(log.id) !== String(id));
-    localStorage.setItem(KEYS.WEIGHT, JSON.stringify(filtered));
+    weightCache = weightCache.filter(log => String(log.id) !== String(id));
+    idbDeleteWeightLog(id);
+    localStorage.setItem(KEYS.WEIGHT, JSON.stringify(weightCache));
   },
 
   getProfile(): UserProfile {
-    const data = localStorage.getItem(KEYS.PROFILE);
-    return data ? JSON.parse(data) : DUMMY_PROFILE;
+    return { ...profileCache };
   },
 
   saveProfile(fullName: string, targetWeight?: number | null, height?: number | null): UserProfile {
-    const profile = this.getProfile();
-    profile.full_name = fullName;
-    profile.target_weight = targetWeight !== undefined ? targetWeight : null;
-    profile.height = height !== undefined ? height : null;
-    profile.updated_at = new Date().toISOString();
-    localStorage.setItem(KEYS.PROFILE, JSON.stringify(profile));
-    return profile;
+    profileCache.full_name = fullName;
+    profileCache.target_weight = targetWeight !== undefined ? targetWeight : null;
+    profileCache.height = height !== undefined ? height : null;
+    profileCache.updated_at = new Date().toISOString();
+
+    idbSaveProfile(profileCache);
+    localStorage.setItem(KEYS.PROFILE, JSON.stringify(profileCache));
+
+    return { ...profileCache };
   },
 
   getAITips(): AITipLog[] {
-    const data = localStorage.getItem(KEYS.AI_TIPS);
-    return data ? JSON.parse(data) : [];
+    return [...aiTipsCache];
   },
 
   saveAITip(tip: string, focus: string): AITipLog {
-    const logs = this.getAITips();
     const newLog: AITipLog = {
       id: `tip-${Math.random().toString(36).substr(2, 9)}`,
       tip,
       focus,
       created_at: new Date().toISOString()
     };
-    logs.unshift(newLog);
-    if (logs.length > 30) logs.pop();
-    localStorage.setItem(KEYS.AI_TIPS, JSON.stringify(logs));
+    aiTipsCache.unshift(newLog);
+    if (aiTipsCache.length > 30) aiTipsCache.pop();
+
+    idbSaveAITip(newLog);
+    localStorage.setItem(KEYS.AI_TIPS, JSON.stringify(aiTipsCache));
+
     return newLog;
-  },
-
-  getWaterLogs(): WaterLog[] {
-    const data = localStorage.getItem(KEYS.WATER_LOGS);
-    return data ? JSON.parse(data) : [];
-  },
-
-  getTodayWaterLogs(): WaterLog[] {
-    const logs = this.getWaterLogs();
-    const todayStr = new Date().toDateString();
-    return logs.filter((log) => new Date(log.logged_at).toDateString() === todayStr);
-  },
-
-  getTodayWaterTotal(): number {
-    const todayLogs = this.getTodayWaterLogs();
-    return todayLogs.reduce((sum, item) => sum + (Number(item.amount_ml) || 0), 0);
-  },
-
-  saveWaterLog(amountMl: number, loggedAt?: string): WaterLog {
-    const logs = this.getWaterLogs();
-    const newLog: WaterLog = {
-      id: generateUUID(),
-      amount_ml: amountMl,
-      logged_at: loggedAt || new Date().toISOString(),
-    };
-    logs.push(newLog);
-    // Sort chronologically
-    logs.sort((a, b) => new Date(a.logged_at).getTime() - new Date(b.logged_at).getTime());
-    localStorage.setItem(KEYS.WATER_LOGS, JSON.stringify(logs));
-    return newLog;
-  },
-
-  deleteWaterLog(id: string): void {
-    const logs = this.getWaterLogs();
-    const filtered = logs.filter((log) => String(log.id) !== String(id));
-    localStorage.setItem(KEYS.WATER_LOGS, JSON.stringify(filtered));
-  },
-
-  getWaterConfig(): WaterReminderConfig {
-    const data = localStorage.getItem(KEYS.WATER_CONFIG);
-    return data ? { ...DEFAULT_WATER_CONFIG, ...JSON.parse(data) } : DEFAULT_WATER_CONFIG;
-  },
-
-  saveWaterConfig(updated: Partial<WaterReminderConfig>): WaterReminderConfig {
-    const current = this.getWaterConfig();
-    const merged = { ...current, ...updated };
-    localStorage.setItem(KEYS.WATER_CONFIG, JSON.stringify(merged));
-    return merged;
   },
 
   clearAllData(): void {
+    bpCache = [];
+    weightCache = [];
+    idbClearData();
     localStorage.setItem(KEYS.BP, JSON.stringify([]));
     localStorage.setItem(KEYS.WEIGHT, JSON.stringify([]));
   },
 
   resetAll(): void {
+    bpCache = deduplicateBPLogs(DUMMY_BP_LOGS);
+    weightCache = deduplicateWeightLogs(DUMMY_WEIGHT_LOGS);
+    profileCache = { ...DUMMY_PROFILE };
+    aiTipsCache = [];
+
+    idbResetAll();
     localStorage.removeItem(KEYS.BP);
     localStorage.removeItem(KEYS.WEIGHT);
     localStorage.removeItem(KEYS.PROFILE);
@@ -401,3 +442,4 @@ export const localDb = {
     ensureSeeded();
   }
 };
+
