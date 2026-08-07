@@ -85,6 +85,7 @@ export default function App() {
     "monthly"
   );
   const [actionSuccess, setActionSuccess] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
   const [isManualSyncing, setIsManualSyncing] = useState(false);
 
   // Refs for BP input auto-focus
@@ -209,6 +210,11 @@ export default function App() {
   const showSuccessAlert = useCallback((msg: string) => {
     setActionSuccess(msg);
     setTimeout(() => setActionSuccess(null), 3500);
+  }, []);
+
+  const showErrorAlert = useCallback((msg: string) => {
+    setActionError(msg);
+    setTimeout(() => setActionError(null), 4000);
   }, []);
 
   // ── Health Tip Generator ────────────────────────────────
@@ -429,7 +435,7 @@ export default function App() {
         showSuccessAlert("Profil berhasil diperbarui!");
       } catch (err: any) {
         console.error(err);
-        alert("Gagal memperbarui profil: " + err.message);
+        showErrorAlert("Gagal memperbarui profil: " + err.message);
       }
     },
     [profileNameInput, targetWeightInput, heightInput, showSuccessAlert, handleBackgroundSync]
@@ -443,7 +449,7 @@ export default function App() {
       const dia = parseInt(diaInput);
       const pulse = parseInt(pulseInput);
       if (isNaN(sys) || isNaN(dia) || isNaN(pulse)) {
-        alert("Masukkan angka tensi dan nadi yang valid.");
+        showErrorAlert("Masukkan angka tensi dan nadi yang valid.");
         return;
       }
 
@@ -470,7 +476,7 @@ export default function App() {
         setBpDate(now.toISOString().slice(0, 16));
       } catch (err: any) {
         console.error(err);
-        alert("Gagal menyimpan catatan: " + err.message);
+        showErrorAlert("Gagal menyimpan catatan: " + err.message);
       }
     },
     [sysInput, diaInput, pulseInput, bpDate, bpNotes, showSuccessAlert, handleBackgroundSync]
@@ -482,7 +488,7 @@ export default function App() {
       e.preventDefault();
       const w = parseFloat(weightInput);
       if (isNaN(w) || w <= 0) {
-        alert("Masukkan berat badan yang valid.");
+        showErrorAlert("Masukkan berat badan yang valid.");
         return;
       }
 
@@ -507,7 +513,7 @@ export default function App() {
         setWeightDate(now.toISOString().slice(0, 16));
       } catch (err: any) {
         console.error(err);
-        alert("Gagal menyimpan berat badan: " + err.message);
+        showErrorAlert("Gagal menyimpan berat badan: " + err.message);
       }
     },
     [weightInput, weightNotes, weightDate, showSuccessAlert, handleBackgroundSync]
@@ -532,7 +538,7 @@ export default function App() {
         showSuccessAlert("Catatan tensi berhasil dihapus.");
       } catch (err: any) {
         console.error(err);
-        alert("Gagal menghapus catatan: " + err.message);
+        showErrorAlert("Gagal menghapus catatan: " + err.message);
       }
     },
     [showSuccessAlert, handleBackgroundSync]
@@ -556,7 +562,7 @@ export default function App() {
         showSuccessAlert("Catatan berat badan berhasil dihapus.");
       } catch (err: any) {
         console.error(err);
-        alert("Gagal menghapus catatan: " + err.message);
+        showErrorAlert("Gagal menghapus catatan: " + err.message);
       }
     },
     [showSuccessAlert, handleBackgroundSync]
@@ -568,14 +574,14 @@ export default function App() {
       const activeClient = updateSupabaseClient(url, key, email, password);
       setCreds(getSavedCredentials());
       if (!activeClient) {
-        alert("Kredensial tidak valid. Silakan masukkan URL dan Key Supabase yang benar.");
+        showErrorAlert("Kredensial tidak valid. Silakan masukkan URL dan Key Supabase yang benar.");
         return;
       }
       if (email && password) {
         const { error } = await activeClient.auth.signInWithPassword({ email, password });
         if (error) {
           console.warn("SignIn error:", error);
-          alert("Konfigurasi tersimpan, namun gagal login: " + error.message);
+          showErrorAlert("Konfigurasi tersimpan, namun gagal login: " + error.message);
           return;
         }
       }
@@ -710,20 +716,20 @@ export default function App() {
       reader.onload = async (e) => {
         const text = e.target?.result as string;
         if (!text) {
-          alert("File kosong atau gagal membaca file.");
+          showErrorAlert("File kosong atau gagal membaca file.");
           return;
         }
 
         const result = parseCSV(text);
         if (result.error) {
-          alert(result.error);
+          showErrorAlert(result.error);
           return;
         }
 
         const totalBp = result.bp.length;
         const totalWeight = result.weight.length;
         if (totalBp === 0 && totalWeight === 0) {
-          alert("Tidak ada data rekam medis yang valid ditemukan dalam file CSV.");
+          showErrorAlert("Tidak ada data rekam medis yang valid ditemukan dalam file CSV.");
           return;
         }
 
@@ -757,7 +763,7 @@ export default function App() {
             if (navigator.onLine && getSupabase()) setTimeout(handleBackgroundSync, 500);
           } catch (err: any) {
             console.error("Gagal mengimpor CSV:", err);
-            alert("Gagal mengimpor data CSV: " + err.message);
+            showErrorAlert("Gagal mengimpor data CSV: " + err.message);
           }
         }
       };
@@ -884,6 +890,12 @@ export default function App() {
         <div className="fixed bottom-20 sm:bottom-6 right-6 z-50 p-4 rounded-xl bg-slate-900 text-white text-xs font-semibold shadow-xl border border-slate-800 flex items-center gap-2.5 animate-bounce">
           <CheckCircle className="h-4.5 w-4.5 text-emerald-400" />
           <span>{actionSuccess}</span>
+        </div>
+      )}
+      {actionError && (
+        <div className="fixed bottom-20 sm:bottom-6 right-6 z-50 p-4 rounded-xl bg-slate-900 text-white text-xs font-semibold shadow-xl border border-slate-800 flex items-center gap-2.5 animate-bounce">
+          <AlertTriangle className="h-4.5 w-4.5 text-rose-400" />
+          <span>{actionError}</span>
         </div>
       )}
 
