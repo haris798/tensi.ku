@@ -42,6 +42,14 @@ export default function SupabaseConfigModal({
 
     if (Capacitor.isNativePlatform()) {
       try {
+        const status = await Filesystem.checkPermissions();
+        if (status.publicStorage !== 'granted') {
+          const req = await Filesystem.requestPermissions();
+          if (req.publicStorage !== 'granted') {
+            alert('Izin penyimpanan diperlukan untuk mengekspor file.');
+            return;
+          }
+        }
         await Filesystem.writeFile({
           path: 'Download/supabase-config.json',
           data: jsonStr,
