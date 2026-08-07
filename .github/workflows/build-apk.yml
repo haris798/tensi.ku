@@ -34,7 +34,7 @@ jobs:
         uses: android-actions/setup-android@v3
 
       - name: Setup Gradle
-        uses: gradle/actions/setup-gradle@v3
+        uses: gradle/actions/setup-gradle@v4
 
       - name: Build web app
         env:
@@ -60,11 +60,6 @@ jobs:
       - name: Sync Capacitor
         run: npx cap sync android
 
-      - name: Cache Android debug keystore
-        uses: actions/cache@v4
-        with:
-          path: ~/.android/debug.keystore
-          key: debug-keystore-v1
 
       - name: Bump Android version code
         run: |
