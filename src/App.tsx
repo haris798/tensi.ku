@@ -1,4 +1,7 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from "react";
+import { StatusBar, Style } from '@capacitor/status-bar';
+import { SplashScreen } from '@capacitor/splash-screen';
+import { Capacitor } from '@capacitor/core';
 import {
   getSupabase,
   getSavedCredentials,
@@ -230,38 +233,18 @@ export default function App() {
       setIsGeneratingTip(true);
       setTipError(null);
 
-      try {
-        if (!navigator.onLine) throw new Error("Tidak ada koneksi internet");
-
-        const response = await fetch("/api/gemini/health-tips", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            latestBP: activeBP
-              ? { systolic: activeBP.systolic, diastolic: activeBP.diastolic, pulse: activeBP.pulse }
-              : null,
-            latestWeight: activeWeight ? { weight: activeWeight.weight } : null,
-          }),
-        });
-
-        if (!response.ok) throw new Error(`Server returned status ${response.status}`);
-
-        const contentType = response.headers.get("content-type");
-        if (!contentType || !contentType.includes("application/json")) {
-          throw new Error("Response is not JSON format");
+      // Menggunakan local tip statis (Gemini dihapus)
+      setTimeout(() => {
+        try {
+          const localTipData = generateLocalTip(activeBP, activeWeight);
+          localDb.saveAITip(localTipData.tip, `${localTipData.focus} (Lokal)`);
+          setAiTipsHistory(localDb.getAITips());
+        } catch (err: any) {
+          console.error("Gagal men-generate tip lokal:", err);
+        } finally {
+          setIsGeneratingTip(false);
         }
-
-        const data = await response.json();
-        localDb.saveAITip(data.tip, data.focus);
-        setAiTipsHistory(localDb.getAITips());
-      } catch (err: any) {
-        console.warn("Gagal memuat tips AI online, menggunakan versi lokal:", err);
-        const localTipData = generateLocalTip(activeBP, activeWeight);
-        localDb.saveAITip(localTipData.tip, `${localTipData.focus} (Lokal)`);
-        setAiTipsHistory(localDb.getAITips());
-      } finally {
-        setIsGeneratingTip(false);
-      }
+      }, 300); // Simulasi delay animasi UX
     },
     [latestBP, latestWeight, aiTipsHistory]
   );
@@ -291,12 +274,21 @@ export default function App() {
         setHeightInput(p.height ? String(p.height) : "");
       }
     });
+
+    if (Capacitor.isNativePlatform()) {
+      SplashScreen.hide().catch(console.warn);
+    }
   }, []);
 
   // ── Dark Mode ───────────────────────────────────────────
   useEffect(() => {
     localStorage.setItem("bp_dark_mode", isDark ? "true" : "false");
     document.documentElement.classList.toggle("dark", isDark);
+    
+    if (Capacitor.isNativePlatform()) {
+      StatusBar.setStyle({ style: isDark ? Style.Dark : Style.Light }).catch(console.warn);
+      StatusBar.setBackgroundColor({ color: isDark ? '#020617' : '#f8fafc' }).catch(console.warn);
+    }
   }, [isDark]);
 
   // ── Silent Background Sync ────────────────────────────
