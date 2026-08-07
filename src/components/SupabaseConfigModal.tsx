@@ -1,5 +1,7 @@
 import React, { useState, useRef } from "react";
 import { Database, Lock, Save, X, Upload, Download } from "lucide-react";
+import { Capacitor } from '@capacitor/core';
+import { Filesystem, Directory, Encoding } from '@capacitor/filesystem';
 
 interface SupabaseConfigModalProps {
   isOpen: boolean;
@@ -29,22 +31,39 @@ export default function SupabaseConfigModal({
   const [inputPassword, setInputPassword] = useState(password || "");
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const handleExport = () => {
+  const handleExport = async () => {
     const config = {
       url: inputUrl,
       anonKey: inputKey,
       email: inputEmail,
       password: inputPassword,
     };
-    const blob = new Blob([JSON.stringify(config, null, 2)], { type: "application/json" });
-    const urlBlob = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = urlBlob;
-    a.download = "supabase-config.json";
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(urlBlob);
+    const jsonStr = JSON.stringify(config, null, 2);
+
+    if (Capacitor.isNativePlatform()) {
+      try {
+        await Filesystem.writeFile({
+          path: 'Download/supabase-config.json',
+          data: jsonStr,
+          directory: Directory.ExternalStorage,
+          encoding: Encoding.UTF8,
+        });
+        alert('Konfigurasi berhasil disimpan ke folder Download/supabase-config.json');
+      } catch (err) {
+        console.error(err);
+        alert('Gagal menyimpan file konfigurasi. Pastikan izin penyimpanan telah diberikan.');
+      }
+    } else {
+      const blob = new Blob([jsonStr], { type: "application/json" });
+      const urlBlob = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = urlBlob;
+      a.download = "supabase-config.json";
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(urlBlob);
+    }
   };
 
   const handleImport = (e: React.ChangeEvent<HTMLInputElement>) => {
