@@ -41,7 +41,9 @@ export default function SupabaseConfigModal({
     const a = document.createElement("a");
     a.href = urlBlob;
     a.download = "supabase-config.json";
+    document.body.appendChild(a);
     a.click();
+    document.body.removeChild(a);
     URL.revokeObjectURL(urlBlob);
   };
 
@@ -59,6 +61,17 @@ export default function SupabaseConfigModal({
           if (config.anonKey !== undefined) setInputKey(config.anonKey);
           if (config.email !== undefined) setInputEmail(config.email);
           if (config.password !== undefined) setInputPassword(config.password);
+          
+          // Auto-save and close if URL and Key are present
+          if (config.url && config.anonKey) {
+            onSave(
+              config.url.trim(), 
+              config.anonKey.trim(), 
+              (config.email || "").trim(), 
+              (config.password || "").trim()
+            );
+            onClose();
+          }
         }
       } catch (err) {
         alert("Gagal membaca file JSON.");
