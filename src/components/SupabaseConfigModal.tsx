@@ -1,5 +1,5 @@
-import React, { useState } from "react";
-import { Database, Lock, Save, X } from "lucide-react";
+import React, { useState, useRef } from "react";
+import { Database, Lock, Save, X, Upload, Download } from "lucide-react";
 
 interface SupabaseConfigModalProps {
   isOpen: boolean;
@@ -27,6 +27,48 @@ export default function SupabaseConfigModal({
   const [inputKey, setInputKey] = useState(anonKey);
   const [inputEmail, setInputEmail] = useState(email || "");
   const [inputPassword, setInputPassword] = useState(password || "");
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleExport = () => {
+    const config = {
+      url: inputUrl,
+      anonKey: inputKey,
+      email: inputEmail,
+      password: inputPassword,
+    };
+    const blob = new Blob([JSON.stringify(config, null, 2)], { type: "application/json" });
+    const urlBlob = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = urlBlob;
+    a.download = "supabase-config.json";
+    a.click();
+    URL.revokeObjectURL(urlBlob);
+  };
+
+  const handleImport = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      try {
+        const result = event.target?.result;
+        if (typeof result === "string") {
+          const config = JSON.parse(result);
+          if (config.url !== undefined) setInputUrl(config.url);
+          if (config.anonKey !== undefined) setInputKey(config.anonKey);
+          if (config.email !== undefined) setInputEmail(config.email);
+          if (config.password !== undefined) setInputPassword(config.password);
+        }
+      } catch (err) {
+        alert("Gagal membaca file JSON.");
+      }
+    };
+    reader.readAsText(file);
+    if (fileInputRef.current) {
+        fileInputRef.current.value = "";
+    }
+  };
 
   if (!isOpen) return null;
 
@@ -57,6 +99,29 @@ export default function SupabaseConfigModal({
             </h3>
           </div>
           <div className="flex items-center gap-2">
+            <input
+              type="file"
+              accept=".json"
+              ref={fileInputRef}
+              onChange={handleImport}
+              className="hidden"
+            />
+            <button
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              title="Impor Konfigurasi"
+              className="flex items-center justify-center p-2 rounded-xl text-slate-500 hover:bg-slate-200 dark:hover:bg-slate-700 hover:text-slate-700 dark:hover:text-slate-100 transition-all"
+            >
+              <Upload className="h-5 w-5" />
+            </button>
+            <button
+              type="button"
+              onClick={handleExport}
+              title="Ekspor Konfigurasi"
+              className="flex items-center justify-center p-2 rounded-xl text-slate-500 hover:bg-slate-200 dark:hover:bg-slate-700 hover:text-slate-700 dark:hover:text-slate-100 transition-all"
+            >
+              <Download className="h-5 w-5" />
+            </button>
             <button
               type="button"
               onClick={() => {
